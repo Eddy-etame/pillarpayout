@@ -1,6 +1,8 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+console.log('Loaded environment variables:', process.env.POSTGRES_USER, process.env.POSTGRES_HOST);
+
 const Joi = require('joi');
 
 const envSchema = Joi.object({

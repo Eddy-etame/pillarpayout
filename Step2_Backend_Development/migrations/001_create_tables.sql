@@ -8,28 +8,27 @@ CREATE TABLE IF NOT EXISTS users (
   salt VARCHAR(255),
   balance NUMERIC(15, 2) DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  role VARCHAR(20) NOT NULL DEFAULT 'player'
 );
 
 CREATE TABLE IF NOT EXISTS rounds (
   id SERIAL PRIMARY KEY,
+  crash_point NUMERIC(5, 2) NOT NULL,
   server_seed VARCHAR(64) NOT NULL,
-  client_seed_hash VARCHAR(64) NOT NULL,
-  final_multiplier NUMERIC(10, 2),
-  crash_point_nonce INTEGER NOT NULL,
-  started_at TIMESTAMP,
-  ended_at TIMESTAMP
+  client_seed VARCHAR(64) NOT NULL,
+  nonce INTEGER NOT NULL,
+  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  end_time TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS bets (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id),
   round_id INTEGER REFERENCES rounds(id),
-  bet_amount NUMERIC(15, 2) NOT NULL,
-  cash_out_multiplier NUMERIC(10, 2),
-  winnings NUMERIC(15, 2),
-  status VARCHAR(20) NOT NULL,
-  placed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  amount NUMERIC(15, 2) NOT NULL,
+  cashout_multiplier NUMERIC(10, 2),
+  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -44,12 +43,13 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS community_goals (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
-  target_height INTEGER NOT NULL,
-  current_height INTEGER DEFAULT 0,
-  reward_amount NUMERIC(15, 2),
-  status VARCHAR(20),
+  target_blocks INTEGER NOT NULL,
+  current_blocks INTEGER DEFAULT 0,
+  reward VARCHAR(100),
+  status VARCHAR(20) DEFAULT 'active',
   start_date DATE,
-  end_date DATE
+  end_date DATE,
+  reward_distributed BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS chat_messages (
