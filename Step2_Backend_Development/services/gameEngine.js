@@ -87,7 +87,7 @@ class GameEngine {
       // Generate provably fair seeds
       this.serverSeed = crypto.randomBytes(32).toString('hex');
       this.clientSeed = crypto.randomBytes(32).toString('hex');
-      this.nonce = Date.now();
+      this.nonce = Math.floor(Math.random() * 1000000); // Use smaller integer for database compatibility
 
       // Calculate crash point using house advantage algorithm
       this.crashPoint = this.calculateCrashPointWithAdvantage();
@@ -137,23 +137,18 @@ class GameEngine {
   }
 
   // Calculate crash point using provably fair algorithm (legacy method)
-  calculateCrashPoint() {
-    const combined = this.serverSeed + this.clientSeed + this.nonce.toString();
-    const hash = crypto.createHash('sha256').update(combined).digest('hex');
-    const decimal = parseInt(hash.substring(0, 8), 16);
-    const crashPoint = (decimal % 10000) / 1000 + 1;
-    return parseFloat(crashPoint.toFixed(2));
-  }
+  // REMOVED: Duplicate calculateCrashPoint() method
+  // Using calculateCrashPointWithAdvantage() instead for house edge
 
   // Start the running phase
   startRunningPhase() {
     this.gameState = 'running';
     this.lastUpdateTime = Date.now();
 
-    // Start game loop (100ms intervals)
+    // Start game loop (1000ms intervals for proper timing)
     this.gameLoop = setInterval(() => {
       this.updateGameState();
-    }, 100);
+    }, 1000);
 
     logger.info(`Round ${this.roundId} running phase started`);
   }
@@ -232,25 +227,41 @@ class GameEngine {
 
   // Process bets when tower crashes
   async processCrashedBets() {
-    for (const [userId, bet] of this.activeBets) {
-      try {
-        // All active bets lose when tower crashes
-        await this.processBetLoss(userId, bet);
-      } catch (error) {
-        logger.error(`Error processing crashed bet for user ${userId}:`, error);
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Process all bets with rollback capability
+      for (const [userId, bet] of this.activeBets) {
+        try {
+          await this.processBetLoss(userId, bet, client);
+        } catch (error) {
+          logger.error(`Failed to process bet for user ${userId}:`, error);
+          // Continue with other bets, don't fail entire round
+        }
       }
+      
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to process crashed bets:', error);
+      // Implement retry mechanism or manual intervention
+    } finally {
+      client.release();
     }
   }
 
   // Process bet loss
-  async processBetLoss(userId, bet) {
-    await db.query(
+  async processBetLoss(userId, bet, client = null) {
+    const dbClient = client || db;
+    
+    await dbClient.query(
       'UPDATE users SET balance = balance - $1 WHERE id = $2',
       [bet.amount, userId]
     );
 
     // Record bet in database
-    await db.query(
+    await dbClient.query(
       'INSERT INTO bets (user_id, round_id, amount, cashout_multiplier, timestamp) VALUES ($1, $2, $3, $4, NOW())',
       [userId, this.roundId, bet.amount, null]
     );
@@ -274,15 +285,18 @@ class GameEngine {
 
   // Place a bet
   async placeBet(userId, amount) {
+    const client = await db.connect();
     try {
+      await client.query('BEGIN');
+
       // Validate bet amount
       if (amount < 1 || amount > 1000) {
         throw new Error('Bet amount must be between $1 and $1000');
       }
 
-      // Check if user has sufficient balance
-      const userResult = await db.query(
-        'SELECT balance FROM users WHERE id = $1',
+      // Check if user has sufficient balance with row lock
+      const userResult = await client.query(
+        'SELECT balance FROM users WHERE id = $1 FOR UPDATE',
         [userId]
       );
 
@@ -296,7 +310,7 @@ class GameEngine {
       }
 
       // Deduct bet amount from balance
-      await db.query(
+      await client.query(
         'UPDATE users SET balance = balance - $1 WHERE id = $2',
         [amount, userId]
       );
@@ -316,6 +330,8 @@ class GameEngine {
         logger.info(`Crash point recalculated to ${this.crashPoint} after bet of $${amount}`);
       }
 
+      await client.query('COMMIT');
+
       logger.info(`User ${userId} placed bet of $${amount}`);
 
       return {
@@ -324,8 +340,11 @@ class GameEngine {
         betAmount: amount
       };
     } catch (error) {
+      await client.query('ROLLBACK');
       logger.error(`Error placing bet for user ${userId}:`, error);
       throw error;
+    } finally {
+      client.release();
     }
   }
 
