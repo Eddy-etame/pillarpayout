@@ -22,6 +22,9 @@ const gameEngine = require('./services/gameEngine');
 const logger = require('./utils/logger');
 const chatService = require('./services/chatService'); // Added
 
+// Pass io instance to game engine for WebSocket events
+gameEngine.setIo(io);
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -68,7 +71,7 @@ io.on('connection', (socket) => {
   socket.join('game');
 
   // Send current game state to new connection
-  socket.emit('game_state', {
+  socket.emit('game_update', {
     type: 'initial_state',
     data: gameEngine.getGameState()
   });
@@ -188,6 +191,18 @@ setInterval(async () => {
       type: 'state_update',
       data: gameState
     });
+    
+    // Also emit live bets and round history for sidebar
+    const activeBets = Array.from(gameEngine.activeBets.values()).map(bet => ({
+      userId: bet.userId,
+      username: bet.username || 'Player',
+      amount: bet.amount,
+      multiplier: gameState.multiplier,
+      timestamp: new Date()
+    }));
+    
+    io.to('game').emit('live_bets', activeBets);
+    
   } catch (error) {
     logger.error('Error broadcasting game state:', error);
   }

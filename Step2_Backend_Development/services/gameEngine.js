@@ -23,6 +23,7 @@ class GameEngine {
     this.roundStartTime = null;
     this.lastUpdateTime = null;
     this.redisAvailable = false;
+    this.io = null; // Socket.IO instance
     
     // House advantage configuration
     this.MEDIUM_BET_AMOUNT = 2.00; // $2 USD as medium amount
@@ -30,6 +31,11 @@ class GameEngine {
     this.HOUSE_ADVANTAGE_FACTOR = 0.15; // 15% house advantage
     this.MAX_CRASH_PROBABILITY = 0.95; // 95% max crash probability
     this.MIN_CRASH_PROBABILITY = 0.75; // 75% min crash probability
+  }
+
+  // Set Socket.IO instance for WebSocket events
+  setIo(io) {
+    this.io = io;
   }
 
   // Calculate house advantage based on bet amount
@@ -119,6 +125,15 @@ class GameEngine {
       }, 5000);
 
       logger.info(`New round ${this.roundId} started with crash point: ${this.crashPoint} (House advantage applied)`);
+
+      // Emit new round event to all connected clients
+      if (this.io) {
+        this.io.to('game').emit('new_round', {
+          roundId: this.roundId,
+          crashPoint: this.crashPoint,
+          timestamp: new Date()
+        });
+      }
 
       return {
         roundId: this.roundId,
@@ -219,6 +234,17 @@ class GameEngine {
 
     logger.info(`Round ${this.roundId} crashed at ${this.multiplier}x`);
 
+    // Emit round history event to all connected clients
+    if (this.io) {
+      this.io.to('game').emit('round_history', [{
+        roundId: this.roundId,
+        multiplier: this.multiplier,
+        crashed: true,
+        timestamp: new Date(),
+        crashPoint: this.crashPoint
+      }]);
+    }
+
     // Start results phase (3 seconds)
     setTimeout(() => {
       this.startResultsPhase();
@@ -316,13 +342,21 @@ class GameEngine {
       );
 
       // Add to active bets
-      this.activeBets.set(userId, {
+      const betData = {
+        userId: userId,
         amount: amount,
         timestamp: Date.now(),
-        cashoutMultiplier: null
-      });
-
+        cashoutMultiplier: null,
+        username: userResult.rows[0].username
+      };
+      
+      this.activeBets.set(userId, betData);
       this.activePlayers.add(userId);
+
+      // Emit new bet event to all connected clients
+      if (this.io) {
+        this.io.to('game').emit('new_bet', betData);
+      }
 
       // Recalculate crash point with new bet amount
       if (this.gameState === 'waiting') {
@@ -381,6 +415,11 @@ class GameEngine {
       // Remove from active bets
       this.activeBets.delete(userId);
       this.activePlayers.delete(userId);
+
+      // Emit bet removed event to all connected clients
+      if (this.io) {
+        this.io.to('game').emit('bet_removed', userId);
+      }
 
       logger.info(`User ${userId} cashed out at ${this.multiplier}x, won $${winnings}`);
 
@@ -463,6 +502,9 @@ class GameEngine {
     }
 
     // Fallback to in-memory state
+    const now = Date.now();
+    const roundTime = this.roundStartTime ? now - this.roundStartTime : 0;
+    
     return {
       roundId: this.roundId,
       gameState: this.gameState,
@@ -471,6 +513,10 @@ class GameEngine {
       specialBlock: this.specialBlock,
       activePlayers: Array.from(this.activePlayers),
       activeBets: Array.from(this.activeBets.entries()),
+      crashPoint: this.crashPoint,
+      roundTime: roundTime,
+      connectedPlayers: this.activePlayers.size,
+      currentRound: this.roundId,
       houseAdvantageStats: this.getHouseAdvantageStats()
     };
   }

@@ -1,0 +1,20 @@
+{
+  "name": "pillarpayout",
+  "version": "1.0.0",
+  "description": "PillarPayout Gaming Platform",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test-integration.js",
+    "start-dev": "./start-development.bat",
+    "start-prod": "./deploy-production.bat",
+    "backend": "cd Step2_Backend_Development && npm start",
+    "frontend": "cd Step3_Frontend_Development && npm start"
+  },
+  "keywords": ["gaming", "crash", "real-time", "multiplayer"],
+  "author": "PillarPayout Team",
+  "license": "ISC",
+  "devDependencies": {
+    "axios": "^1.6.0",
+    "socket.io-client": "^4.7.0"
+  }
+} 
