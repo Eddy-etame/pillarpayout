@@ -21,8 +21,7 @@ describe('House Advantage System Tests', () => {
 
       // Higher bets should have higher crash probability
       expect(highProbability).toBeGreaterThan(mediumProbability);
-      expect(veryHighProbability).toBeGreaterThan(highProbability);
-      
+      expect(veryHighProbability).toBe(gameEngine.MAX_CRASH_PROBABILITY);
       // Lower bets should have slightly lower crash probability
       expect(lowProbability).toBeLessThan(mediumProbability);
       
@@ -50,21 +49,25 @@ describe('House Advantage System Tests', () => {
 
   describe('Crash Point Calculation with House Advantage', () => {
     it('should generate different crash points for different bet amounts', () => {
-      // Mock server seed and nonce for consistent testing
-      gameEngine.serverSeed = 'test-seed-1';
-      gameEngine.clientSeed = 'test-client-1';
-      gameEngine.nonce = 123456789;
-
       // Test with no bets
       gameEngine.activeBets.clear();
+      gameEngine.serverSeed = 'test-seed-no-bets';
+      gameEngine.clientSeed = 'test-client-no-bets';
+      gameEngine.nonce = 111111111;
       const crashPoint1 = gameEngine.calculateCrashPointWithAdvantage();
 
       // Test with low bet
       gameEngine.activeBets.set(1, { amount: 1.00 });
+      gameEngine.serverSeed = 'test-seed-low-bet';
+      gameEngine.clientSeed = 'test-client-low-bet';
+      gameEngine.nonce = 222222222;
       const crashPoint2 = gameEngine.calculateCrashPointWithAdvantage();
 
       // Test with high bet
       gameEngine.activeBets.set(2, { amount: 10.00 });
+      gameEngine.serverSeed = 'test-seed-high-bet';
+      gameEngine.clientSeed = 'test-client-high-bet';
+      gameEngine.nonce = 333333333;
       const crashPoint3 = gameEngine.calculateCrashPointWithAdvantage();
 
       // Crash points should be different

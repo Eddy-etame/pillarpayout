@@ -25,7 +25,7 @@ class CommunityGoalsService {
 
       // Validate goal data
       if (!title || !description || !targetAmount || !rewardType || !rewardValue || !duration) {
-        throw new Error('Missing required goal parameters');
+        throw new Error('Invalid goal parameters');
       }
 
       if (targetAmount <= 0 || rewardValue <= 0 || duration <= 0) {
@@ -35,14 +35,11 @@ class CommunityGoalsService {
       // Create goal in database
       const result = await db.query(`
         INSERT INTO community_goals (
-          title, description, target_amount, current_amount, reward_type, 
-          reward_value, duration, min_bet_amount, max_bet_amount, 
-          required_participants, start_time, end_time, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW() + INTERVAL '$11 hours', 'active')
+          name, description, target_blocks, current_blocks, reward, status, start_date, end_date, min_bet_amount, max_bet_amount
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW() + ($7 || ' hours')::INTERVAL, $8, $9)
         RETURNING id
       `, [
-        title, description, targetAmount, 0, rewardType, rewardValue, 
-        duration, minBetAmount, maxBetAmount, requiredParticipants, duration
+        title, description, Math.ceil(targetAmount), 0, `${rewardType}:${rewardValue}`, 'active', duration, minBetAmount, maxBetAmount
       ]);
 
       const goalId = result.rows[0].id;
@@ -86,6 +83,18 @@ class CommunityGoalsService {
 
       return this.formatGoal(result.rows[0]);
     } catch (error) {
+      // If the query fails due to missing tables, try simpler query
+      if (error.message.includes('relation "community_goal_participants" does not exist')) {
+        const result = await db.query(`
+          SELECT * FROM community_goals WHERE id = $1
+        `, [goalId]);
+
+        if (result.rows.length === 0) {
+          return null;
+        }
+
+        return this.formatGoal(result.rows[0]);
+      }
       logger.error('Error getting goal by ID:', error);
       throw error;
     }
@@ -102,13 +111,22 @@ class CommunityGoalsService {
         FROM community_goals cg
         LEFT JOIN community_goal_participants cgp ON cg.id = cgp.goal_id
         LEFT JOIN community_goal_contributions cgc ON cg.id = cgc.goal_id
-        WHERE cg.status = 'active' AND cg.end_time > NOW()
+        WHERE cg.status = 'active' AND cg.end_date > NOW()
         GROUP BY cg.id
-        ORDER BY cg.start_time DESC
+        ORDER BY cg.start_date DESC
       `);
 
       return result.rows.map(row => this.formatGoal(row));
     } catch (error) {
+      // If the query fails due to missing tables, return empty array
+      if (error.message.includes('relation "community_goal_participants" does not exist')) {
+        const result = await db.query(`
+          SELECT * FROM community_goals 
+          WHERE status = 'active' AND end_date > NOW()
+          ORDER BY start_date DESC
+        `);
+        return result.rows.map(row => this.formatGoal(row));
+      }
       logger.error('Error getting active goals:', error);
       throw error;
     }
@@ -127,7 +145,7 @@ class CommunityGoalsService {
         LEFT JOIN community_goal_contributions cgc ON cg.id = cgc.goal_id
         WHERE cg.status = 'completed'
         GROUP BY cg.id
-        ORDER BY cg.end_time DESC
+        ORDER BY cg.end_date DESC
         LIMIT $1
       `, [limit]);
 
@@ -416,7 +434,7 @@ class CommunityGoalsService {
         LEFT JOIN community_goal_contributions cgc ON cg.id = cgc.goal_id AND cgc.user_id = $1
         WHERE cgp.user_id = $1 AND cg.status = 'active'
         GROUP BY cg.id, cgp.joined_at
-        ORDER BY cg.start_time DESC
+        ORDER BY cg.start_date DESC
       `, [userId]);
 
       return result.rows.map(row => ({
@@ -431,20 +449,25 @@ class CommunityGoalsService {
 
   // Format goal object
   formatGoal(row) {
+    // Parse reward string (format: "type:value")
+    const rewardParts = (row.reward || '').split(':');
+    const rewardType = rewardParts[0] || 'bonus';
+    const rewardValue = parseFloat(rewardParts[1] || 0);
+    
     return {
       id: row.id,
-      title: row.title,
-      description: row.description,
-      targetAmount: parseFloat(row.target_amount),
-      currentAmount: parseFloat(row.current_amount || 0),
-      rewardType: row.reward_type,
-      rewardValue: parseFloat(row.reward_value),
-      duration: row.duration,
+      title: row.name || row.title,
+      description: row.description || '',
+      targetAmount: parseFloat(row.target_blocks || row.target_amount || 0),
+      currentAmount: parseFloat(row.current_blocks || row.current_amount || 0),
+      rewardType: rewardType,
+      rewardValue: rewardValue,
+      duration: row.duration || 24, // Default 24 hours
       minBetAmount: parseFloat(row.min_bet_amount || 0),
       maxBetAmount: row.max_bet_amount ? parseFloat(row.max_bet_amount) : null,
-      requiredParticipants: row.required_participants,
-      startTime: row.start_time,
-      endTime: row.end_time,
+      requiredParticipants: row.required_participants || 1,
+      startTime: row.start_date || row.start_time,
+      endTime: row.end_date || row.end_time,
       status: row.status,
       completedAt: row.completed_at,
       participantCount: parseInt(row.participant_count || 0),

@@ -25,7 +25,13 @@ describe('Tournament System Tests', () => {
     });
 
     it('should validate tournament types correctly', async () => {
-      expect(() => tournamentService.createTournament('invalid')).toThrow('Invalid tournament type');
+      // Test invalid tournament type
+      try {
+        await tournamentService.createTournament('invalid');
+        throw new Error('Expected createTournament to throw for invalid type');
+      } catch (error) {
+        expect(error.message).toContain('Invalid tournament type');
+      }
       
       const validTypes = ['mini', 'regular', 'major', 'daily'];
       for (const type of validTypes) {
@@ -159,7 +165,7 @@ describe('Tournament System Tests', () => {
   describe('API Endpoint Tests', () => {
     it('should get active tournaments', async () => {
       const response = await request(app)
-        .get('/')
+        .get('/api/v1/tournaments')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -169,7 +175,7 @@ describe('Tournament System Tests', () => {
 
     it('should reject unauthorized tournament creation', async () => {
       const response = await request(app)
-        .post('/')
+        .post('/api/v1/tournaments')
         .send({ type: 'mini' })
         .expect(401);
 
@@ -178,7 +184,7 @@ describe('Tournament System Tests', () => {
 
     it('should reject unauthorized tournament stats access', async () => {
       const response = await request(app)
-        .get('/stats')
+        .get('/api/v1/tournaments/stats')
         .expect(401);
 
       expect(response.body.error).toBeDefined();

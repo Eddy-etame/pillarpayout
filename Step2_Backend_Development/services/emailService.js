@@ -66,27 +66,42 @@ class EmailService {
         };
       }
 
-      // Step 3: Check if domain has MX records (can receive email)
-      const hasMX = await this.checkDomainMX(domain);
-      if (!hasMX) {
-        this.invalidDomains.add(domain);
-        return {
-          valid: false,
-          reason: 'Domain does not have email servers (MX records)'
-        };
+      // Step 3: Check for disposable email patterns FIRST (before DNS checks)
+      const disposablePatterns = [
+        /^temp$/,
+        /^tmp$/,
+        /^test$/,
+        /^fake$/,
+        /^disposable$/,
+        /^throwaway$/,
+        /^trash$/,
+        /^spam$/,
+        /^junk$/,
+        /^dummy$/,
+        /^example$/,
+        /^sample$/,
+        /^demo$/,
+        /^temporary$/,
+        /^trial$/,
+        /^free$/,
+        /^anonymous$/,
+        /^noreply$/,
+        /^no-reply$/,
+        /^donotreply$/,
+        /^do-not-reply$/
+      ];
+
+      const localPart = email.split('@')[0].toLowerCase();
+      for (const pattern of disposablePatterns) {
+        if (pattern.test(localPart)) {
+          return {
+            valid: false,
+            reason: 'Email appears to be temporary or fake'
+          };
+        }
       }
 
-      // Step 4: Check if domain has A records (basic connectivity)
-      const hasA = await this.checkDomainA(domain);
-      if (!hasA) {
-        this.invalidDomains.add(domain);
-        return {
-          valid: false,
-          reason: 'Domain does not exist'
-        };
-      }
-
-      // Step 5: Additional checks for common fake email providers
+      // Step 4: Additional checks for common fake email providers
       const fakeProviders = [
         '10minutemail.com',
         'tempmail.org',
@@ -144,39 +159,24 @@ class EmailService {
         };
       }
 
-      // Step 6: Check for disposable email patterns
-      const disposablePatterns = [
-        /^temp/,
-        /^tmp/,
-        /^test/,
-        /^fake/,
-        /^disposable/,
-        /^throwaway/,
-        /^trash/,
-        /^spam/,
-        /^junk/,
-        /^dummy/,
-        /^example/,
-        /^sample/,
-        /^demo/,
-        /^temporary/,
-        /^trial/,
-        /^free/,
-        /^anonymous/,
-        /^noreply/,
-        /^no-reply/,
-        /^donotreply/,
-        /^do-not-reply/
-      ];
+      // Step 5: Check if domain has MX records (can receive email)
+      const hasMX = await this.checkDomainMX(domain);
+      if (!hasMX) {
+        this.invalidDomains.add(domain);
+        return {
+          valid: false,
+          reason: 'Domain does not have email servers (MX records)'
+        };
+      }
 
-      const localPart = email.split('@')[0].toLowerCase();
-      for (const pattern of disposablePatterns) {
-        if (pattern.test(localPart)) {
-          return {
-            valid: false,
-            reason: 'Email appears to be temporary or fake'
-          };
-        }
+      // Step 6: Check if domain has A records (basic connectivity)
+      const hasA = await this.checkDomainA(domain);
+      if (!hasA) {
+        this.invalidDomains.add(domain);
+        return {
+          valid: false,
+          reason: 'Domain does not exist'
+        };
       }
 
       // If all checks pass, cache the domain as valid

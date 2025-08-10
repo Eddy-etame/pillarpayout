@@ -282,6 +282,14 @@ class ChatService {
     logger.info(`User ${userId} banned from chat: ${reason}`);
     return banMessage;
   }
+
+  // Clear cache for testing
+  clearCache() {
+    this.activeUsers.clear();
+    this.chatHistory = [];
+    this.rateLimit.clear();
+    logger.info('Chat cache cleared');
+  }
 }
 
 module.exports = new ChatService(); 

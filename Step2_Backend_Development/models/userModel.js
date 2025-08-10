@@ -7,8 +7,8 @@ class UserModel {
       const { username, email, password_hash, balance, role } = userData;
       
       const result = await db.query(
-        'INSERT INTO users (username, email, password_hash, balance, role, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id, username, email, balance, role, created_at',
-        [username, email, password_hash, balance, role]
+        'INSERT INTO users (username, email, password_hash, salt, balance, role, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, email, balance, role, created_at',
+        [username, email, password_hash, null, balance, role]
       );
       
       return result.rows[0];

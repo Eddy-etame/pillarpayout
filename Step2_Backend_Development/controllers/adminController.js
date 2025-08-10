@@ -82,8 +82,8 @@ exports.createCommunityGoal = async (req, res) => {
   const { name, targetHeight, rewardAmount, startDate, endDate } = req.body;
   try {
     const result = await db.query(
-      'INSERT INTO community_goals (name, target_height, reward_amount, start_date, end_date, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-      [name, targetHeight, rewardAmount, startDate, endDate, 'active']
+      'INSERT INTO community_goals (name, target_blocks, reward, start_date, end_date, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [name, targetHeight, `cash_reward:${rewardAmount}`, startDate, endDate, 'active']
     );
     logger.info(`Admin created community goal: ${name}`);
     res.status(201).json({ message: 'Community goal created', goalId: result.rows[0].id });

@@ -40,16 +40,17 @@ class GameEngine {
 
   // Calculate house advantage based on bet amount
   calculateHouseAdvantage(betAmount) {
+    if (betAmount === this.MEDIUM_BET_AMOUNT || betAmount <= 0) {
+      return this.BASE_CRASH_PROBABILITY;
+    }
     const ratio = betAmount / this.MEDIUM_BET_AMOUNT;
-    
-    if (ratio >= 1) {
-      // Higher bets = higher crash probability (house advantage)
-      const advantage = Math.min(this.HOUSE_ADVANTAGE_FACTOR * Math.log(ratio + 1), 0.10);
-      return this.BASE_CRASH_PROBABILITY + advantage;
+    let advantage;
+    if (ratio > 1) {
+      advantage = Math.min(this.HOUSE_ADVANTAGE_FACTOR * Math.log(ratio), 0.10);
+      return Math.min(this.MAX_CRASH_PROBABILITY, this.BASE_CRASH_PROBABILITY + advantage);
     } else {
-      // Lower bets = slightly lower crash probability (still house advantage)
-      const advantage = Math.max(-0.05, -this.HOUSE_ADVANTAGE_FACTOR * Math.log(1/ratio + 1));
-      return this.BASE_CRASH_PROBABILITY + advantage;
+      advantage = Math.max(-0.05, -this.HOUSE_ADVANTAGE_FACTOR * Math.log(1/ratio));
+      return Math.max(this.MIN_CRASH_PROBABILITY, this.BASE_CRASH_PROBABILITY + advantage);
     }
   }
 
@@ -160,10 +161,10 @@ class GameEngine {
     this.gameState = 'running';
     this.lastUpdateTime = Date.now();
 
-    // Start game loop (1000ms intervals for proper timing)
+    // Start game loop (100ms intervals for more responsive updates)
     this.gameLoop = setInterval(() => {
       this.updateGameState();
-    }, 1000);
+    }, 100);
 
     logger.info(`Round ${this.roundId} running phase started`);
   }
@@ -173,7 +174,7 @@ class GameEngine {
     const now = Date.now();
     const elapsed = now - this.lastUpdateTime;
 
-    // Update multiplier (increases by 0.05 every 100ms)
+    // Update multiplier (increases by 0.05 every 100ms for smoother animation)
     this.multiplier += 0.05;
 
     // Update integrity meter (decreases by 0-2% randomly)
@@ -199,6 +200,18 @@ class GameEngine {
 
     this.lastUpdateTime = now;
     this.updateRedisGameState();
+    
+    // Emit real-time updates to all connected clients
+    if (this.io) {
+      this.io.to('game').emit('game_update', {
+        type: 'multiplier',
+        data: {
+          multiplier: this.multiplier,
+          integrity: this.integrity,
+          roundTime: Math.floor((now - this.roundStartTime) / 1000)
+        }
+      });
+    }
   }
 
   // Generate special block
@@ -234,8 +247,18 @@ class GameEngine {
 
     logger.info(`Round ${this.roundId} crashed at ${this.multiplier}x`);
 
-    // Emit round history event to all connected clients
+    // Emit crash event to all connected clients
     if (this.io) {
+      this.io.to('game').emit('game_update', {
+        type: 'crash',
+        data: {
+          crashPoint: this.crashPoint,
+          finalMultiplier: this.multiplier,
+          roundId: this.roundId
+        }
+      });
+
+      // Emit round history event to all connected clients
       this.io.to('game').emit('round_history', [{
         roundId: this.roundId,
         multiplier: this.multiplier,
@@ -245,15 +268,39 @@ class GameEngine {
       }]);
     }
 
-    // Start results phase (3 seconds)
+    // Start victory lap phase (3 seconds)
     setTimeout(() => {
-      this.startResultsPhase();
+      this.startVictoryLap();
     }, 3000);
+  }
+
+  // Start victory lap phase
+  startVictoryLap() {
+    this.gameState = 'results';
+    this.updateRedisGameState();
+
+    // Emit victory lap event
+    if (this.io) {
+      this.io.to('game').emit('game_update', {
+        type: 'victory_lap',
+        data: {
+          finalMultiplier: this.multiplier,
+          roundId: this.roundId
+        }
+      });
+    }
+
+    logger.info(`Round ${this.roundId} victory lap started`);
+
+    // Start new round after 5 seconds (total 8 seconds from crash)
+    setTimeout(() => {
+      this.startNewRound();
+    }, 5000);
   }
 
   // Process bets when tower crashes
   async processCrashedBets() {
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       
@@ -298,20 +345,9 @@ class GameEngine {
     logger.info(`User ${userId} lost bet of $${bet.amount}`);
   }
 
-  // Start results phase
-  startResultsPhase() {
-    this.gameState = 'results';
-    this.updateRedisGameState();
-
-    // Start new round after 2 seconds
-    setTimeout(() => {
-      this.startNewRound();
-    }, 2000);
-  }
-
   // Place a bet
   async placeBet(userId, amount) {
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 

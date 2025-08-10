@@ -1,323 +1,249 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useAuthStore } from '../../stores/authStore';
 import { useGameStore } from '../../stores/gameStore';
-import socket from '../../utils/socket';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { DollarSign, Target, Zap, Wallet } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { formatXAF, parseAmount } from '../../utils/currency';
 
 const BettingInterface: React.FC = () => {
-  const { 
-    playerBalance, 
-    currentBet, 
-    isGameActive, 
-    gameState,
-    multiplier,
-    hasPlacedBet,
-    userId,
-    insuranceOptions,
-    selectedInsurance,
-    setCurrentBet, 
-    setPlayerBalance,
-    setHasPlacedBet,
-    setInsuranceOptions,
-    setSelectedInsurance
-  } = useGameStore();
+  const { user, updateBalance } = useAuthStore();
+  const { gameState, currentBet, hasPlacedBet, multiplier, setCurrentBet, setHasPlacedBet } = useGameStore();
+  const { isConnected, sendMessage } = useWebSocket();
+  const navigate = useNavigate();
+  const [betAmount, setBetAmount] = useState('');
+  const [autoCashout, setAutoCashout] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [betAmount, setBetAmount] = useState<number>(10);
-  const [autoCashout, setAutoCashout] = useState<number>(2.0);
-  const [isAutoPlay, setIsAutoPlay] = useState<boolean>(false);
-  const [autoPlayRounds, setAutoPlayRounds] = useState<number>(5);
-  const [showInsurance, setShowInsurance] = useState<boolean>(false);
-  const [countdown, setCountdown] = useState<number>(0);
+  const numericBalance: number = (() => {
+    const b: unknown = user?.balance as unknown;
+    if (typeof b === 'number' && Number.isFinite(b)) return b;
+    const parsed = parseFloat(String(b ?? '0'));
+    return Number.isFinite(parsed) ? parsed : 0;
+  })();
 
-  // Calculate insurance cost
-  const getInsuranceCost = () => {
-    if (!selectedInsurance || !insuranceOptions) return 0;
-    const option = insuranceOptions.find(opt => opt.type === selectedInsurance);
-    return option ? option.premium : 0;
-  };
+  const MIN_BET = 100; // FCFA
 
-  // Calculate total cost (bet + insurance)
-  const getTotalCost = () => {
-    return betAmount + getInsuranceCost();
-  };
+  const handlePlaceBet = async () => {
+    const bet = parseAmount(betAmount);
+    if (!bet || bet <= 0) return;
 
-  // Handle bet placement
-  const handleBetPlacement = async () => {
-    if (!userId) {
-      alert('Please log in to place a bet');
+    if (gameState !== 'waiting') {
+      alert('You can only place bets before the round starts.');
       return;
     }
 
-    if (getTotalCost() > playerBalance) {
-      alert('Insufficient balance!');
-      return;
-    }
-    
-    if (betAmount < 1 || betAmount > 1000) {
-      alert('Bet amount must be between $1 and $1000!');
+    if (numericBalance < bet) {
+      navigate('/recharge');
       return;
     }
 
+    if (bet < MIN_BET) {
+      alert(`Minimum bet is ${formatXAF(MIN_BET)}`);
+      return;
+    }
+
+    setLoading(true);
     try {
-      // Emit bet placement to server
-      socket.emit('player_action', {
-        action: 'bet',
-        amount: betAmount,
-        userId: userId,
-        insuranceType: selectedInsurance
-      });
-
-      setCurrentBet(betAmount);
-      setPlayerBalance(playerBalance - getTotalCost());
+      // Deduct bet amount immediately
+      const newBalance = numericBalance - bet;
+      updateBalance(newBalance);
+      
+      // Set bet state in store
+      setCurrentBet(bet);
       setHasPlacedBet(true);
+      
+      // Send bet to backend via WebSocket
+      if (isConnected) {
+        sendMessage({
+          type: 'player_action',
+          action: 'bet',
+          amount: bet,
+          userId: user?.id
+        });
+      }
+      
+      setBetAmount('');
+      setAutoCashout('');
     } catch (error) {
       console.error('Error placing bet:', error);
-      alert('Failed to place bet. Please try again.');
+      // Revert balance if bet fails
+      updateBalance(numericBalance);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle cash out
-  const handleCashOut = async () => {
-    if (!userId || !hasPlacedBet || gameState !== 'running') return;
-    
+  const handleCashout = async () => {
+    if (!hasPlacedBet || currentBet <= 0) {
+      alert('No active bet to cash out.');
+      return;
+    }
+
+    if (gameState !== 'running') {
+      alert('Cash out is only available while the round is running.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      // Emit cash out to server
-      socket.emit('player_action', {
-        action: 'cashout',
-        userId: userId
-      });
+      // Calculate winnings based on current multiplier
+      const winnings = currentBet * multiplier;
+      const newBalance = numericBalance + winnings;
+      
+      // Update balance immediately
+      updateBalance(newBalance);
+      
+      // Send cashout to backend via WebSocket
+      if (isConnected) {
+        sendMessage({
+          type: 'player_action',
+          action: 'cashout',
+          userId: user?.id
+        });
+      }
+      
+      // Reset bet state
+      setCurrentBet(0);
+      setHasPlacedBet(false);
+      
     } catch (error) {
       console.error('Error cashing out:', error);
-      alert('Failed to cash out. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle auto-play toggle
-  const handleAutoPlayToggle = () => {
-    setIsAutoPlay(!isAutoPlay);
+  const handleQuickAmount = (amount: number) => {
+    setBetAmount(amount.toString());
   };
 
-  // Get insurance options when bet amount changes
-  useEffect(() => {
-    if (betAmount >= 5 && betAmount <= 1000) {
-      // Request insurance options from server
-      socket.emit('get_insurance_options', { betAmount });
-    } else {
-      setInsuranceOptions(null);
-    }
-  }, [betAmount, setInsuranceOptions]);
-
-  // Listen for insurance options response
-  useEffect(() => {
-    const handleInsuranceOptions = (data: any) => {
-      if (data.available) {
-        setInsuranceOptions(data.options);
-      } else {
-        setInsuranceOptions(null);
-      }
-    };
-
-    socket.on('insurance_options', handleInsuranceOptions);
-    return () => socket.off('insurance_options');
-  }, [setInsuranceOptions]);
-
-  // Listen for bet result
-  useEffect(() => {
-    const handleBetResult = (data: any) => {
-      if (data.success) {
-        setPlayerBalance(data.newBalance);
-      } else {
-        alert(`Bet failed: ${data.message}`);
-        // Revert changes
-        setCurrentBet(0);
-        setHasPlacedBet(false);
-        setPlayerBalance(playerBalance + getTotalCost());
-      }
-    };
-
-    const handleCashoutResult = (data: any) => {
-      if (data.success) {
-        setPlayerBalance(data.newBalance);
-        setCurrentBet(0);
-        setHasPlacedBet(false);
-        alert(`Cashed out at ${data.cashoutMultiplier.toFixed(2)}x! Won $${data.winnings.toFixed(2)}`);
-      } else {
-        alert(`Cash out failed: ${data.message}`);
-      }
-    };
-
-    socket.on('bet_result', handleBetResult);
-    socket.on('cashout_result', handleCashoutResult);
-
-    return () => {
-      socket.off('bet_result');
-      socket.off('cashout_result');
-    };
-  }, [playerBalance, setPlayerBalance, setCurrentBet, setHasPlacedBet]);
+  const quickAmounts = [100, 500, 1000, 2500, 5000, 10000]; // FCFA
 
   return (
-    <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-      <h3 className="text-xl font-semibold mb-4 text-white">Betting Interface</h3>
-      
-      {/* Balance Display */}
-      <div className="mb-4 p-3 bg-slate-700 rounded-lg">
-        <p className="text-slate-300 text-sm">Balance</p>
-        <p className="text-2xl font-bold text-green-400">${playerBalance.toFixed(2)}</p>
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="bg-gray-800 rounded-lg border border-gray-700 p-6"
+    >
+      <h3 className="text-xl font-bold mb-6 flex items-center">
+        <Target className="w-5 h-5 mr-2" />
+        Place Your Bet
+      </h3>
+
+      {/* Connection Status */}
+      <div className={`mb-4 p-2 rounded-lg text-center text-sm ${
+        isConnected ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+      }`}>
+        {isConnected ? 'Connected to Game Server' : 'Disconnected - Reconnecting...'}
       </div>
 
-      {/* Current Multiplier Display */}
-      {isGameActive && (
-        <div className="mb-4 p-3 bg-blue-900 border border-blue-600 rounded-lg">
-          <p className="text-blue-300 text-sm">Current Multiplier</p>
-          <p className="text-2xl font-bold text-blue-400">{multiplier.toFixed(2)}x</p>
+      {/* Balance Display */}
+      <div className="bg-gray-700 rounded-lg p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <span className="text-gray-300">Balance</span>
+          <span className="text-green-400 font-bold text-lg">
+            {formatXAF(numericBalance)}
+          </span>
+        </div>
+        <div className="mt-3 text-right">
+          <Link to="/recharge" className="inline-flex items-center text-sm text-blue-400 hover:text-blue-300">
+            <Wallet className="w-4 h-4 mr-1" /> Recharge
+          </Link>
+        </div>
+      </div>
+
+      {/* Current Bet Status */}
+      {hasPlacedBet && (
+        <div className="bg-blue-600 rounded-lg p-4 mb-6">
+          <div className="text-center text-white">
+            <div className="text-sm">Current Bet</div>
+            <div className="text-xl font-bold">{formatXAF(currentBet)}</div>
+            <div className="text-sm">Multiplier: {multiplier.toFixed(2)}x</div>
+          </div>
         </div>
       )}
 
       {/* Bet Amount Input */}
-      <div className="mb-4">
-        <label className="block text-slate-300 text-sm mb-2">Bet Amount ($1 - $1000)</label>
-        <input
-          type="number"
-          min="1"
-          max="1000"
-          value={betAmount}
-          onChange={(e) => setBetAmount(Number(e.target.value))}
-          className="w-full p-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-          disabled={hasPlacedBet || gameState === 'running'}
-        />
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
+          Bet Amount (FCFA)
+        </label>
+        <div className="relative">
+          <input
+            type="number"
+            value={betAmount}
+            onChange={(e) => setBetAmount(e.target.value)}
+            placeholder="0"
+            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <DollarSign className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+        </div>
       </div>
 
-      {/* Insurance Section */}
-      {insuranceOptions && insuranceOptions.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-slate-300 text-sm">Insurance</label>
-            <button
-              onClick={() => setShowInsurance(!showInsurance)}
-              className="text-blue-400 hover:text-blue-300 text-sm"
-            >
-              {showInsurance ? 'Hide' : 'Show'} Options
-            </button>
-          </div>
-          
-          {showInsurance && (
-            <div className="space-y-2">
-              {insuranceOptions.map((option) => (
-                <div
-                  key={option.type}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedInsurance === option.type
-                      ? 'bg-blue-900 border-blue-600'
-                      : 'bg-slate-700 border-slate-600 hover:border-slate-500'
-                  }`}
-                  onClick={() => setSelectedInsurance(selectedInsurance === option.type ? null : option.type)}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-white font-semibold capitalize">{option.type} Insurance</p>
-                      <p className="text-slate-400 text-sm">
-                        Premium: ${option.premium} | Coverage: ${option.coverageAmount}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-green-400 font-semibold">${option.totalCost}</p>
-                      <p className="text-slate-400 text-xs">Total Cost</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+      {/* Quick Amount Buttons */}
+      <div className="grid grid-cols-3 gap-2 mb-6">
+        {quickAmounts.map((amount) => (
+          <button
+            key={amount}
+            onClick={() => handleQuickAmount(amount)}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+          >
+            {formatXAF(amount)}
+          </button>
+        ))}
+      </div>
+
+      {/* Auto Cashout */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
+          Auto Cashout (x)
+        </label>
+        <div className="relative">
+          <input
+            type="number"
+            value={autoCashout}
+            onChange={(e) => setAutoCashout(e.target.value)}
+            placeholder="2.00"
+            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <Zap className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="space-y-3">
+        <button
+          onClick={handlePlaceBet}
+          disabled={loading || !betAmount || parseAmount(betAmount) <= 0 || gameState !== 'waiting' || !isConnected}
+          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed py-3 rounded-lg font-semibold transition-colors"
+        >
+          {loading ? 'Placing Bet...' : 'Place Bet'}
+        </button>
+        
+        <button
+          onClick={handleCashout}
+          disabled={loading || !hasPlacedBet || gameState !== 'running' || !isConnected}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed py-3 rounded-lg font-semibold transition-colors"
+        >
+          {loading ? 'Processing...' : 'Cash Out'}
+        </button>
+      </div>
+
+      {/* Game State Info */}
+      <div className="mt-6 p-3 bg-gray-700 rounded-lg">
+        <div className="text-center text-sm">
+          <div className="text-gray-300">Game State</div>
+          <div className="text-white font-semibold capitalize">{gameState}</div>
+          {gameState === 'running' && (
+            <div className="text-green-400 text-xs mt-1">
+              Round in progress - Cash out available!
             </div>
           )}
         </div>
-      )}
-
-      {/* Total Cost Display */}
-      {selectedInsurance && (
-        <div className="mb-4 p-3 bg-yellow-900 border border-yellow-600 rounded-lg">
-          <p className="text-yellow-300 text-sm">Total Cost (Bet + Insurance)</p>
-          <p className="text-xl font-bold text-yellow-400">${getTotalCost().toFixed(2)}</p>
-        </div>
-      )}
-
-      {/* Bet Button */}
-      <button
-        onClick={handleBetPlacement}
-        disabled={hasPlacedBet || gameState === 'running' || getTotalCost() > playerBalance}
-        className="w-full mb-4 p-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
-      >
-        {hasPlacedBet ? 'Bet Placed' : 'Place Bet'}
-      </button>
-
-      {/* Cash Out Button */}
-      <button
-        onClick={handleCashOut}
-        disabled={!hasPlacedBet || gameState !== 'running'}
-        className="w-full mb-4 p-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
-      >
-        Cash Out
-      </button>
-
-      {/* Auto-Play Section */}
-      <div className="border-t border-slate-600 pt-4">
-        <h4 className="text-lg font-medium mb-3 text-white">Auto-Play Settings</h4>
-        
-        {/* Auto-Play Toggle */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-slate-300">Auto-Play</span>
-          <button
-            onClick={handleAutoPlayToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              isAutoPlay ? 'bg-green-600' : 'bg-slate-600'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                isAutoPlay ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Auto-Cashout Multiplier */}
-        <div className="mb-3">
-          <label className="block text-slate-300 text-sm mb-2">Auto-Cashout Multiplier</label>
-          <input
-            type="number"
-            min="1.1"
-            step="0.1"
-            value={autoCashout}
-            onChange={(e) => setAutoCashout(Number(e.target.value))}
-            className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-            disabled={!isAutoPlay}
-          />
-        </div>
-
-        {/* Auto-Play Rounds */}
-        <div className="mb-3">
-          <label className="block text-slate-300 text-sm mb-2">Number of Rounds</label>
-          <input
-            type="number"
-            min="1"
-            max="50"
-            value={autoPlayRounds}
-            onChange={(e) => setAutoPlayRounds(Number(e.target.value))}
-            className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-            disabled={!isAutoPlay}
-          />
-        </div>
       </div>
-
-      {/* Current Bet Display */}
-      {hasPlacedBet && (
-        <div className="mt-4 p-3 bg-blue-900 border border-blue-600 rounded-lg">
-          <p className="text-blue-300 text-sm">Current Bet</p>
-          <p className="text-xl font-bold text-blue-400">${currentBet.toFixed(2)}</p>
-          {selectedInsurance && (
-            <p className="text-blue-300 text-sm">
-              + {selectedInsurance} Insurance: ${getInsuranceCost().toFixed(2)}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+    </motion.div>
   );
 };
 

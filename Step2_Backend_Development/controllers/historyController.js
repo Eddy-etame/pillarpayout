@@ -5,10 +5,10 @@ exports.getRoundsHistory = async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
     const result = await db.query(
-      `SELECT id as roundId, final_multiplier as "finalMultiplier", server_seed as "serverSeedHash", client_seed_hash as "clientSeedHash", crash_point_nonce as nonce, ended_at as "endedAt"
+      `SELECT id as roundId, crash_point as "finalMultiplier", server_seed as "serverSeedHash", client_seed as "clientSeedHash", nonce, end_time as "endedAt"
        FROM rounds
-       WHERE ended_at IS NOT NULL
-       ORDER BY ended_at DESC
+       WHERE end_time IS NOT NULL
+       ORDER BY end_time DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
@@ -27,8 +27,10 @@ exports.getMyBetsHistory = async (req, res) => {
     const roundId = req.query.roundId;
 
     let query = `
-      SELECT id as betId, round_id as "roundId", bet_amount as "betAmount", cash_out_multiplier as "cashOutMultiplier",
-             winnings, status, placed_at as "placedAt"
+      SELECT id as betId, round_id as "roundId", amount as "betAmount", cashout_multiplier as "cashOutMultiplier",
+             amount * cashout_multiplier as winnings, 
+             CASE WHEN cashout_multiplier IS NOT NULL THEN 'cashed_out' ELSE 'active' END as status, 
+             timestamp as "placedAt"
       FROM bets
       WHERE user_id = $1
     `;
@@ -39,7 +41,7 @@ exports.getMyBetsHistory = async (req, res) => {
       params.push(roundId);
     }
 
-    query += ' ORDER BY placed_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+    query += ' ORDER BY timestamp DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
     params.push(limit, offset);
 
     const result = await db.query(query, params);

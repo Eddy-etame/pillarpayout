@@ -7,6 +7,8 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const historyRoutes = require('./routes/history');
 const communityGoalsRoutes = require('./routes/communityGoals');
+const insuranceRoutes = require('./routes/insurance');
+const paymentRoutes = require('./routes/payment');
 const authMiddleware = require('./middleware/authMiddleware');
 const adminMiddleware = require('./middleware/adminMiddleware');
 const config = require('./config');
@@ -21,17 +23,19 @@ const winston = require('winston');
 const gameEngine = require('./services/gameEngine');
 const logger = require('./utils/logger');
 const chatService = require('./services/chatService'); // Added
-
-// Pass io instance to game engine for WebSocket events
-gameEngine.setIo(io);
+const paymentService = require('./services/paymentService');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: 'http://localhost:3000',
+    credentials: true
   }
 });
+
+// Pass io instance to game engine for WebSocket events
+gameEngine.setIo(io);
 
 const swaggerSpec = swaggerJsdoc({
   definition: {
@@ -46,7 +50,12 @@ const swaggerSpec = swaggerJsdoc({
 
 app.use(express.json());
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 
 // Routes
@@ -54,6 +63,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/community-goals', communityGoalsRoutes);
+app.use('/api/insurance', insuranceRoutes);
+app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/v1', apiV1Router);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -217,11 +228,14 @@ setInterval(() => {
   }
 }, 300000); // Every 5 minutes
 
-// Initialize game engine
+// Initialize game engine and payment service
 async function initializeGame() {
   try {
     await gameEngine.initialize();
     logger.info('Game engine initialized successfully');
+    
+    await paymentService.initializeGateways();
+    logger.info('Payment service initialized successfully');
   } catch (error) {
     logger.error('Failed to initialize game engine:', error);
     process.exit(1);
@@ -259,3 +273,6 @@ app.use((err, req, res, next) => {
   logger.error(err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });
+
+// Export app for testing
+module.exports = app;

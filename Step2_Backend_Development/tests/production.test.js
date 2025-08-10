@@ -272,7 +272,7 @@ describe('Production System Tests', () => {
   describe('API Endpoint Tests', () => {
     it('should reject unauthorized access to production endpoints', async () => {
       const response = await request(app)
-        .get('/profitability')
+        .get('/api/v1/production/profitability')
         .expect(401);
 
       expect(response.body.error).toBeDefined();
@@ -280,7 +280,7 @@ describe('Production System Tests', () => {
 
     it('should reject non-admin access to production endpoints', async () => {
       const response = await request(app)
-        .get('/profitability')
+        .get('/api/v1/production/profitability')
         .set('Authorization', 'Bearer valid_token_but_not_admin')
         .expect(401);
 

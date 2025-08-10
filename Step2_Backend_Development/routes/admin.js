@@ -217,13 +217,14 @@
 const express = require('express');
 const adminController = require('../controllers/adminController');
 const adminMiddleware = require('../middleware/adminMiddleware');
+const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
-router.get('/users', adminMiddleware, adminController.listUsers);
-router.get('/transactions', adminMiddleware, adminController.listTransactions);
-router.post('/adjust-balance', adminMiddleware, adminController.adjustBalance);
-router.patch('/game-parameters', adminMiddleware, adminController.updateGameParameters);
-router.post('/create-community-goal', adminMiddleware, adminController.createCommunityGoal);
-router.get('/logs', adminMiddleware, adminController.getLogs);
+router.get('/users', authMiddleware, adminMiddleware, adminController.listUsers);
+router.get('/transactions', authMiddleware, adminMiddleware, adminController.listTransactions);
+router.post('/adjust-balance', authMiddleware, adminMiddleware, adminController.adjustBalance);
+router.patch('/game-parameters', authMiddleware, adminMiddleware, adminController.updateGameParameters);
+router.post('/create-community-goal', authMiddleware, adminMiddleware, adminController.createCommunityGoal);
+router.get('/logs', authMiddleware, adminMiddleware, adminController.getLogs);
 
 module.exports = router; 
