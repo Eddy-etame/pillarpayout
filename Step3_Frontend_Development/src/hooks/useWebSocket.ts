@@ -1,16 +1,16 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { useGameStore } from '../stores/gameStore';
-import { useAuthStore } from '../stores/authStore';
 
 interface GameUpdate {
-  type: 'game_state' | 'multiplier' | 'crash' | 'round_start' | 'round_end' | 'player_bet' | 'player_cashout';
+  type: 'game_state' | 'multiplier' | 'crash' | 'round_start' | 'round_end' | 'player_bet' | 'player_cashout' | 'initial_state' | 'state_update' | 'victory_lap';
   data: any;
 }
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:3001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001';
 
 export const useWebSocket = () => {
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
@@ -29,42 +29,47 @@ export const useWebSocket = () => {
     setCrashPoint,
     resetGame
   } = useGameStore();
-  
-  const { token } = useAuthStore();
 
   const handleGameUpdate = useCallback((update: GameUpdate) => {
     switch (update.type) {
-      case 'game_state':
-        setGameState(update.data.state);
-        setCurrentRound(update.data.round);
-        setRoundTime(update.data.time);
-        setConnectedPlayers(update.data.players);
+      case 'initial_state':
+      case 'state_update':
+        if (update.data) {
+          setGameState(update.data.state || update.data.gameState);
+          setCurrentRound(update.data.round || update.data.roundId);
+          setMultiplier(update.data.multiplier || 1.0);
+          setIntegrity(update.data.integrity || 100);
+          setRoundTime(update.data.time || update.data.roundTime || 0);
+          setConnectedPlayers(update.data.players || 0);
+        }
         break;
         
       case 'multiplier':
         setMultiplier(update.data.multiplier);
         setIntegrity(update.data.integrity);
+        setRoundTime(update.data.roundTime);
         break;
         
       case 'crash':
         setGameState('crashed');
         setCrashPoint(update.data.crashPoint);
-        setMultiplier(update.data.crashPoint);
+        setMultiplier(update.data.finalMultiplier);
         setIntegrity(0);
         
         // Add to round history
         addRoundHistory({
           roundId: update.data.roundId,
-          multiplier: update.data.crashPoint,
+          multiplier: update.data.finalMultiplier,
           crashed: true,
           timestamp: new Date(),
           crashPoint: update.data.crashPoint
         });
+        break;
         
-        // Reset game after crash with delay
-        setTimeout(() => {
-          resetGame();
-        }, 3000);
+      case 'victory_lap':
+        setGameState('results');
+        setMultiplier(update.data.finalMultiplier);
+        setIntegrity(0);
         break;
         
       case 'round_start':
@@ -100,89 +105,62 @@ export const useWebSocket = () => {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
     reconnectTimeoutRef.current = setTimeout(() => {
       reconnectAttempts.current++;
-      // Use setTimeout to avoid circular dependency
-      setTimeout(() => {
-        if (wsRef.current?.readyState !== WebSocket.OPEN) {
-          const ws = new WebSocket(WS_URL);
-          
-          ws.onopen = () => {
-            console.log('WebSocket reconnected');
-            setIsConnected(true);
-            reconnectAttempts.current = 0;
-            
-            if (token) {
-              ws.send(JSON.stringify({ type: 'auth', token }));
-            }
-          };
-          
-          ws.onclose = () => {
-            console.log('WebSocket reconnection failed');
-            setIsConnected(false);
-          };
-          
-          ws.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              handleGameUpdate(data);
-            } catch (error) {
-              console.error('Error parsing WebSocket message:', error);
-            }
-          };
-          
-          ws.onerror = (error) => {
-            console.error('WebSocket reconnection error:', error);
-          };
-          
-          wsRef.current = ws;
-        }
-      }, 0);
+      connect();
     }, delay);
-  }, [token, handleGameUpdate]);
+  }, []);
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.connected) {
       return; // Already connected
     }
 
-    const ws = new WebSocket(WS_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: maxReconnectAttempts,
+      reconnectionDelay: 1000,
+      timeout: 20000
+    });
     
-    ws.onopen = () => {
-      console.log('WebSocket connected');
+    socket.on('connect', () => {
+      console.log('Socket.IO connected');
       setIsConnected(true);
       reconnectAttempts.current = 0;
-      
-      // Send authentication
-      if (token) {
-        ws.send(JSON.stringify({ type: 'auth', token }));
-      }
-    };
+    });
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    socket.on('disconnect', () => {
+      console.log('Socket.IO disconnected');
       setIsConnected(false);
       scheduleReconnect();
-    };
+    });
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleGameUpdate(data);
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    };
+    socket.on('connect_error', (error) => {
+      console.error('Socket.IO connection error:', error);
+      setIsConnected(false);
+    });
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+    socket.on('game_update', (data) => {
+      handleGameUpdate(data);
+    });
 
-    wsRef.current = ws;
-  }, [token, scheduleReconnect, handleGameUpdate]);
+    socket.on('live_bets', (bets) => {
+      // Handle live bets update
+      console.log('Live bets update:', bets);
+    });
+
+    socket.on('round_history', (history) => {
+      // Handle round history update
+      console.log('Round history update:', history);
+    });
+
+    socketRef.current = socket;
+  }, [scheduleReconnect, handleGameUpdate]);
 
   const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -191,8 +169,8 @@ export const useWebSocket = () => {
   }, []);
 
   const sendMessage = useCallback((message: any) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('player_action', message);
     }
   }, []);
 
@@ -200,15 +178,6 @@ export const useWebSocket = () => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
-
-  useEffect(() => {
-    if (token && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'auth',
-        token: token
-      }));
-    }
-  }, [token]);
 
   return {
     isConnected,
