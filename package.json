@@ -13,7 +13,7 @@
   "keywords": ["gaming", "crash", "real-time", "multiplayer"],
   "author": "PillarPayout Team",
   "license": "ISC",
-  "devDependencies": {
+  "dependencies": {
     "axios": "^1.6.0",
     "socket.io-client": "^4.7.0"
   }

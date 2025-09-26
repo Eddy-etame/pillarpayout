@@ -29,6 +29,11 @@ const BettingInterface: React.FC = () => {
     const bet = parseAmount(betAmount);
     if (!bet || bet <= 0) return;
 
+    if (hasPlacedBet) {
+      alert('You already have an active bet. Please wait for the current round to end.');
+      return;
+    }
+
     if (gameState !== 'waiting') {
       alert('You can only place bets before the round starts.');
       return;
@@ -136,7 +141,7 @@ const BettingInterface: React.FC = () => {
       <div className={`mb-4 p-2 rounded-lg text-center text-sm ${
         isConnected ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
       }`}>
-        {isConnected ? 'Connected to Game Server' : 'Disconnected - Reconnecting...'}
+        {isConnected ? 'Connected to Game Server (High-Speed Updates)' : 'Disconnected - Reconnecting...'}
       </div>
 
       {/* Balance Display */}
@@ -154,12 +159,11 @@ const BettingInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Current Bet Status */}
+      {/* Current Bet Status - REMOVED TEXT, KEPT FUNCTIONALITY */}
       {hasPlacedBet && (
         <div className="bg-blue-600 rounded-lg p-4 mb-6">
           <div className="text-center text-white">
-            <div className="text-sm">Current Bet</div>
-            <div className="text-xl font-bold">{formatXAF(currentBet)}</div>
+            <div className="text-3xl font-bold">{formatXAF(currentBet)}</div>
             <div className="text-sm">Multiplier: {multiplier.toFixed(2)}x</div>
           </div>
         </div>
@@ -176,7 +180,20 @@ const BettingInterface: React.FC = () => {
             value={betAmount}
             onChange={(e) => setBetAmount(e.target.value)}
             placeholder="0"
-            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={hasPlacedBet}
+            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+            onClick={() => {
+              if (hasPlacedBet) {
+                // Show small signal that betting is disabled
+                const input = document.querySelector('input[type="number"]') as HTMLInputElement;
+                if (input) {
+                  input.style.borderColor = '#f59e0b';
+                  setTimeout(() => {
+                    input.style.borderColor = '#4b5563';
+                  }, 300);
+                }
+              }
+            }}
           />
           <DollarSign className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
         </div>
@@ -187,8 +204,22 @@ const BettingInterface: React.FC = () => {
         {quickAmounts.map((amount) => (
           <button
             key={amount}
-            onClick={() => handleQuickAmount(amount)}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+            onClick={(event) => {
+              if (hasPlacedBet) {
+                // Show small signal that betting is disabled
+                const button = event.target as HTMLButtonElement;
+                if (button) {
+                  button.style.backgroundColor = '#f59e0b';
+                  setTimeout(() => {
+                    button.style.backgroundColor = '';
+                  }, 300);
+                }
+                return;
+              }
+              handleQuickAmount(amount);
+            }}
+            disabled={hasPlacedBet}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
           >
             {formatXAF(amount)}
           </button>
@@ -206,7 +237,20 @@ const BettingInterface: React.FC = () => {
             value={autoCashout}
             onChange={(e) => setAutoCashout(e.target.value)}
             placeholder="2.00"
-            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={hasPlacedBet}
+            className="w-full px-3 py-2 pl-10 border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+            onClick={() => {
+              if (hasPlacedBet) {
+                // Show small signal that betting is disabled
+                const input = document.querySelector('input[placeholder="2.00"]') as HTMLInputElement;
+                if (input) {
+                  input.style.borderColor = '#f59e0b';
+                  setTimeout(() => {
+                    input.style.borderColor = '#4b5563';
+                  }, 300);
+                }
+              }
+            }}
           />
           <Zap className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
         </div>
@@ -216,7 +260,7 @@ const BettingInterface: React.FC = () => {
       <div className="space-y-3">
         <button
           onClick={handlePlaceBet}
-          disabled={loading || !betAmount || parseAmount(betAmount) <= 0 || gameState !== 'waiting' || !isConnected}
+          disabled={loading || !betAmount || parseAmount(betAmount) <= 0 || gameState !== 'waiting' || !isConnected || hasPlacedBet}
           className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed py-3 rounded-lg font-semibold transition-colors"
         >
           {loading ? 'Placing Bet...' : 'Place Bet'}
@@ -229,19 +273,6 @@ const BettingInterface: React.FC = () => {
         >
           {loading ? 'Processing...' : 'Cash Out'}
         </button>
-      </div>
-
-      {/* Game State Info */}
-      <div className="mt-6 p-3 bg-gray-700 rounded-lg">
-        <div className="text-center text-sm">
-          <div className="text-gray-300">Game State</div>
-          <div className="text-white font-semibold capitalize">{gameState}</div>
-          {gameState === 'running' && (
-            <div className="text-green-400 text-xs mt-1">
-              Round in progress - Cash out available!
-            </div>
-          )}
-        </div>
       </div>
     </motion.div>
   );

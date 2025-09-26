@@ -53,10 +53,18 @@ const logger = require('../utils/logger');
  *       500:
  *         description: Internal server error
  */
-router.post('/recharge', authMiddleware, async (req, res) => {
+// Public recharge endpoint (no authentication required)
+router.post('/recharge', async (req, res) => {
   try {
-    const { amount, paymentMethod, cardToken, phoneNumber, accountNumber, bankCode, walletAddress } = req.body;
-    const userId = req.user.id;
+    const { amount, paymentMethod, cardToken, phoneNumber, accountNumber, bankCode, walletAddress, userId, email } = req.body;
+    
+    // Debug: Log received data
+    logger.info(`Recharge request received: userId=${userId}, email=${email}, amount=${amount}, method=${paymentMethod}`);
+    
+    // For public recharge, userId and email are required in request body
+    if (!userId || !email) {
+      return res.status(400).json({ error: 'User ID and email are required for recharge' });
+    }
 
     // Validate required parameters
     if (!amount || amount <= 0) {

@@ -8,6 +8,7 @@ import AuthPage from './pages/Auth/AuthPage';
 import GamePage from './pages/Game/GamePage';
 import ProfilePage from './pages/Profile/ProfilePage';
 import AdminPage from './pages/Admin/AdminPage';
+import AdminDashboard from './pages/Admin/AdminDashboard';
 import RechargePage from './pages/Auth/RechargePage';
 import VerificationPage from './pages/Auth/VerificationPage';
 import { useAuthStore } from './stores/authStore';
@@ -58,7 +59,11 @@ function AppRoutes() {
       <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
       <Route 
         path="/admin" 
-        element={isAuthenticated && user?.role === 'admin' ? <AdminPage /> : <Navigate to="/auth" replace />} 
+        element={isAuthenticated && user?.isAdmin ? <AdminPage /> : <Navigate to="/auth" replace />} 
+      />
+      <Route 
+        path="/admin/dashboard" 
+        element={isAuthenticated && user?.isAdmin ? <AdminDashboard /> : <Navigate to="/auth" replace />} 
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

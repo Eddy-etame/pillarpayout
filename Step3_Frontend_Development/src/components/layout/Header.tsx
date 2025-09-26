@@ -1,12 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { Wifi, Wallet } from 'lucide-react';
+import { Wifi, Wallet, Shield } from 'lucide-react';
 import { formatXAF } from '../../utils/currency';
 
 const Header: React.FC = () => {
   const location = useLocation();
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, user, isAdmin, logout } = useAuthStore();
 
   const navItems = [
     { path: '/', label: 'Home' },
@@ -14,6 +14,11 @@ const Header: React.FC = () => {
     { path: '/tournaments', label: 'Tournaments' },
     { path: '/profile', label: 'Profile' },
   ];
+
+  // Add admin navigation if user is admin
+  if (isAdmin) {
+    navItems.push({ path: '/admin', label: 'Admin' });
+  }
 
   const numericBalance: number = (() => {
     const b: unknown = user?.balance as unknown;
@@ -40,13 +45,14 @@ const Header: React.FC = () => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`transition-colors ${
+                className={`transition-colors flex items-center space-x-1 ${
                   location.pathname === item.path
                     ? 'text-white'
                     : 'text-gray-300 hover:text-white'
                 }`}
               >
-                {item.label}
+                {item.path === '/admin' && <Shield className="w-4 h-4" />}
+                <span>{item.label}</span>
               </Link>
             ))}
           </nav>
@@ -58,6 +64,14 @@ const Header: React.FC = () => {
               <Wifi className="w-4 h-4 text-white" />
               <span className="text-white text-sm font-medium">{isAuthenticated ? 'Authenticated' : 'Guest'}</span>
             </div>
+            
+            {/* Admin Badge */}
+            {isAdmin && (
+              <div className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-purple-600">
+                <Shield className="w-4 h-4 text-white" />
+                <span className="text-white text-sm font-medium">Admin</span>
+              </div>
+            )}
             
             {/* User Actions */}
             {isAuthenticated ? (

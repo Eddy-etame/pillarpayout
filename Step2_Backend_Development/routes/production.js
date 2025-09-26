@@ -6,7 +6,7 @@ const adminMiddleware = require('../middleware/adminMiddleware');
 
 // All production routes require authentication and admin privileges
 router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(adminMiddleware.adminAuthMiddleware);
 
 // Metrics endpoints
 router.get('/metrics', productionController.getAllMetrics);

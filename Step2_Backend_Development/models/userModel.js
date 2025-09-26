@@ -3,28 +3,32 @@ const logger = require('../utils/logger');
 
 class UserModel {
   async createUser(userData) {
+    const client = await db.pool.connect();
     try {
+      await client.query('BEGIN');
       const { username, email, password_hash, balance, role } = userData;
       
-      const result = await db.query(
-        'INSERT INTO users (username, email, password_hash, salt, balance, role, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, email, balance, role, created_at',
-        [username, email, password_hash, null, balance, role]
+      const result = await client.query(
+        'INSERT INTO users (username, email, password_hash, salt, balance, role, is_admin, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id, username, email, balance, role, is_admin, created_at',
+        [username, email, password_hash, null, balance, role, role === 'admin']
       );
-      
+      await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
+      await client.query('ROLLBACK');
       logger.error('Error creating user:', error);
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   async findByUsername(username) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, created_at FROM users WHERE username = $1',
+        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE username = $1',
         [username]
       );
-      
       return result.rows[0] || null;
     } catch (error) {
       logger.error('Error finding user by username:', error);
@@ -35,10 +39,9 @@ class UserModel {
   async findByEmail(email) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, created_at FROM users WHERE email = $1',
+        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE email = $1',
         [email]
       );
-      
       return result.rows[0] || null;
     } catch (error) {
       logger.error('Error finding user by email:', error);
@@ -49,10 +52,9 @@ class UserModel {
   async findById(id) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, created_at FROM users WHERE id = $1',
+        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE id = $1',
         [id]
       );
-      
       return result.rows[0] || null;
     } catch (error) {
       logger.error('Error finding user by ID:', error);
@@ -61,16 +63,21 @@ class UserModel {
   }
 
   async updateBalance(userId, newBalance) {
+    const client = await db.pool.connect();
     try {
-      const result = await db.query(
+      await client.query('BEGIN');
+      const result = await client.query(
         'UPDATE users SET balance = $1, updated_at = NOW() WHERE id = $2 RETURNING id, balance',
         [newBalance, userId]
       );
-      
+      await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
+      await client.query('ROLLBACK');
       logger.error('Error updating user balance:', error);
       throw error;
+    } finally {
+      client.release();
     }
   }
 
@@ -79,10 +86,9 @@ class UserModel {
       const { username, email, role } = updateData;
       
       const result = await db.query(
-        'UPDATE users SET username = COALESCE($1, username), email = COALESCE($2, email), role = COALESCE($3, role), updated_at = NOW() WHERE id = $4 RETURNING id, username, email, balance, role, created_at',
+        'UPDATE users SET username = COALESCE($1, username), email = COALESCE($2, email), role = COALESCE($3, role), is_admin = COALESCE($3, role) = \'admin\', updated_at = NOW() WHERE id = $4 RETURNING id, username, email, balance, role, is_admin, created_at',
         [username, email, role, userId]
       );
-      
       return result.rows[0];
     } catch (error) {
       logger.error('Error updating user:', error);
@@ -96,7 +102,6 @@ class UserModel {
         'DELETE FROM users WHERE id = $1 RETURNING id',
         [userId]
       );
-      
       return result.rows[0];
     } catch (error) {
       logger.error('Error deleting user:', error);
@@ -107,10 +112,9 @@ class UserModel {
   async getAllUsers(limit = 100, offset = 0) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, balance, role, created_at FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        'SELECT id, username, email, balance, role, is_admin, created_at FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2',
         [limit, offset]
       );
-      
       return result.rows;
     } catch (error) {
       logger.error('Error getting all users:', error);
@@ -121,10 +125,9 @@ class UserModel {
   async getUsersByRole(role, limit = 100, offset = 0) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, balance, role, created_at FROM users WHERE role = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+        'SELECT id, username, email, balance, role, is_admin, created_at FROM users WHERE role = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
         [role, limit, offset]
       );
-      
       return result.rows;
     } catch (error) {
       logger.error('Error getting users by role:', error);
@@ -143,7 +146,6 @@ class UserModel {
           AVG(balance) as avg_balance
         FROM users
       `);
-      
       return result.rows[0];
     } catch (error) {
       logger.error('Error getting user stats:', error);

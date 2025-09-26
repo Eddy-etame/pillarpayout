@@ -2,10 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { useGameStore } from '../../stores/gameStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import BettingInterface from '../../components/game/BettingInterface';
-import ChatWindow from '../../components/game/ChatWindow';
-import GameSidebar from '../../components/game/GameSidebar';
 import Tower3D from '../../components/game/Tower3D';
+import BettingInterface from '../../components/game/BettingInterface';
+import GameSidebar from '../../components/game/GameSidebar';
+import ChatWindow from '../../components/game/ChatWindow';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 
@@ -24,7 +24,7 @@ const GamePage: React.FC = () => {
     setCurrentRound 
   } = useGameStore();
   
-  const { isConnected } = useWebSocket();
+
 
   // Use ref to track current time to avoid stale closure issues
   const currentTimeRef = useRef(0);
@@ -41,45 +41,46 @@ const GamePage: React.FC = () => {
     }
   }, [user, setGameState, setMultiplier, setIntegrity, setCurrentRound, setRoundTime]);
 
-  // Simulate game progression for demo purposes
-  useEffect(() => {
-    if (gameState === 'waiting' && isConnected) {
-      // Start a new round after 5 seconds
-      const timer = setTimeout(() => {
-        setGameState('running');
-        setMultiplier(1.0);
-        setIntegrity(100);
-        setRoundTime(0);
-      }, 5000);
+  // Remove local game simulation - backend handles all game logic
+  // useEffect(() => {
+  //   if (gameState === 'waiting' && isConnected) {
+  //     // Start a new round after 5 seconds
+  //     const timer = setTimeout(() => {
+  //       setGameState('running');
+  //       setMultiplier(1.0);
+  //       setIntegrity(100);
+  //       setRoundTime(0);
+  //     }, 5000);
 
-      return () => clearTimeout(timer);
-    }
-  }, [gameState, isConnected, setGameState, setMultiplier, setIntegrity, setRoundTime]);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [gameState, isConnected, setGameState, setMultiplier, setIntegrity, setRoundTime]);
 
-  // Simulate multiplier increase during running game
-  useEffect(() => {
-    if (gameState === 'running') {
-      const interval = setInterval(() => {
-        const newTime = currentTimeRef.current + 100;
-        currentTimeRef.current = newTime;
-        setRoundTime(newTime);
-        
-        const newMultiplier = multiplier + 0.01;
-        setMultiplier(newMultiplier);
-        
-        // Simulate crash at random point between 1.5x and 5x
-        if (newMultiplier > 2.5 && Math.random() < 0.02) {
-          setGameState('crashed');
-        }
-        
-        // Decrease integrity as multiplier increases
-        const newIntegrity = Math.max(0, 100 - (newMultiplier - 1) * 20);
-        setIntegrity(newIntegrity);
-      }, 100);
+  // Remove local multiplier simulation - backend provides real-time updates
+  // useEffect(() => {
+  //   if (gameState === 'running') {
+  //     const interval = setInterval(() => {
+  //       const newTime = currentTimeRef.current + 100;
+  //       currentTimeRef.current = newTime;
+  //       setRoundTime(newTime);
+  //       
+  //       // Match backend speed: 0.05x per 100ms = 0.5x per second
+  //       const newMultiplier = multiplier + 0.05;
+  //       setMultiplier(newMultiplier);
+  //       
+  //       // Simulate crash at random point between 1.5x and 5x
+  //       if (newMultiplier > 2.5 && Math.random() < 0.02) {
+  //         setGameState('crashed');
+  //       }
+  //       
+  //       // Decrease integrity as multiplier increases (faster to match multiplier speed)
+  //       const newIntegrity = Math.max(0, 100 - (newMultiplier - 1) * 10);
+  //       setIntegrity(newIntegrity);
+  //     }, 100);
 
-      return () => clearInterval(interval);
-    }
-  }, [gameState, setRoundTime, setMultiplier, setIntegrity, setGameState, multiplier, roundTime]);
+  //     return () => clearInterval(interval);
+  //   }
+  // }, [gameState, setRoundTime, setMultiplier, setIntegrity, setGameState, multiplier, roundTime]);
 
   // Handle crash state with victory lap
   useEffect(() => {
@@ -153,9 +154,13 @@ const GamePage: React.FC = () => {
                    gameState === 'crashed' ? 'CRASHED!' : 
                    gameState === 'results' ? 'VICTORY LAP!' : 'Waiting...'}
                 </div>
-                <div className="text-sm text-gray-400">
+                <div className="text-sm text-gray-400 mb-2">
                   {gameState === 'running' && `Time: ${(roundTime / 1000).toFixed(1)}s`}
                   {gameState === 'results' && 'Next round starting soon...'}
+                </div>
+                {/* Performance Indicator */}
+                <div className="inline-flex items-center text-xs bg-blue-600 text-white px-3 py-1 rounded-full">
+                  ⚡ High-Speed Updates (0.05x/100ms)
                 </div>
               </div>
 
@@ -196,6 +201,9 @@ const GamePage: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* Live Chat Window */}
+      <ChatWindow />
     </div>
   );
 };

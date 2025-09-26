@@ -22,9 +22,12 @@ async function testBackendHealth() {
 async function testDatabaseConnection() {
   console.log('\n🗄️ Testing Database Connection...');
   try {
-    const response = await axios.get(`${BACKEND_URL}/api/v1/health`);
+    const response = await axios.get(`${BACKEND_URL}/health`);
     console.log('✅ Database connection successful');
-    return true;
+    console.log('   Database status:', response.data.database);
+    console.log('   Redis status:', response.data.redis);
+    console.log('   Uptime:', Math.floor(response.data.uptime / 60), 'minutes');
+    return true
   } catch (error) {
     console.log('❌ Database connection failed:', error.message);
     return false;

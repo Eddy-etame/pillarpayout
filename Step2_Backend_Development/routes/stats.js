@@ -13,7 +13,7 @@ router.get('/player', authMiddleware, playerStatsController.getPlayerStats);
 router.get('/history', authMiddleware, playerStatsController.getBettingHistory);
 
 // Admin routes (admin authentication required)
-router.post('/cache/clear', authMiddleware, adminMiddleware, playerStatsController.clearStatsCache);
-router.get('/cache/info', authMiddleware, adminMiddleware, playerStatsController.getCacheInfo);
+router.post('/cache/clear', authMiddleware, adminMiddleware.adminAuthMiddleware, playerStatsController.clearStatsCache);
+router.get('/cache/info', authMiddleware, adminMiddleware.adminAuthMiddleware, playerStatsController.getCacheInfo);
 
 module.exports = router; 

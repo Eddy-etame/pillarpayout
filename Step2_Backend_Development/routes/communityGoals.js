@@ -16,9 +16,9 @@ router.post('/contribute', authMiddleware, communityGoalsController.contributeTo
 router.get('/user', authMiddleware, communityGoalsController.getUserGoals);
 
 // Admin routes
-router.post('/', authMiddleware, adminMiddleware, communityGoalsController.createGoal);
-router.post('/:goalId/complete', authMiddleware, adminMiddleware, communityGoalsController.completeGoal);
-router.post('/cache/clear', authMiddleware, adminMiddleware, communityGoalsController.clearCache);
-router.get('/cache/info', authMiddleware, adminMiddleware, communityGoalsController.getCacheInfo);
+router.post('/', authMiddleware, adminMiddleware.adminAuthMiddleware, communityGoalsController.createGoal);
+router.post('/:goalId/complete', authMiddleware, adminMiddleware.adminAuthMiddleware, communityGoalsController.completeGoal);
+router.post('/cache/clear', authMiddleware, adminMiddleware.adminAuthMiddleware, communityGoalsController.clearCache);
+router.get('/cache/info', authMiddleware, adminMiddleware.adminAuthMiddleware, communityGoalsController.getCacheInfo);
 
 module.exports = router;

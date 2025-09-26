@@ -3,13 +3,17 @@ const router = express.Router();
 const gameController = require('../controllers/gameController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Public routes (no authentication required)
-router.get('/state', gameController.getGameState);
+// Public routes
 router.get('/history', gameController.getRoundHistory);
-router.post('/verify', gameController.verifyCrashPoint);
+router.get('/state', gameController.getGameState);
+router.get('/live-bets', gameController.getLiveBets);
+router.get('/active-players', gameController.getActivePlayers);
 
-// Protected routes (authentication required)
+// Protected routes (require authentication)
 router.post('/bet', authMiddleware, gameController.placeBet);
 router.post('/cashout', authMiddleware, gameController.cashOut);
+router.get('/user-history', authMiddleware, gameController.getUserRoundHistory);
+router.get('/user-stats', authMiddleware, gameController.getUserStats);
+router.post('/bet-with-insurance', authMiddleware, gameController.placeBetWithInsurance);
 
 module.exports = router; 

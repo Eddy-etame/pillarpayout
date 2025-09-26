@@ -102,6 +102,9 @@ interface GameActions {
   setIntegrity: (integrity: number) => void;
   setCrashPoint: (crashPoint: number) => void;
   
+  // Batch update for better performance during fast updates
+  setGameStateBatch: (updates: Partial<GameState>) => void;
+  
   // Player actions
   setPlayerBalance: (balance: number) => void;
   setCurrentBet: (bet: number) => void;
@@ -173,7 +176,7 @@ const initialState: GameState = {
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
   ...initialState,
 
-  // Game state actions
+  // Game state actions - optimized for performance
   setCurrentRound: (round) => set({ currentRound: round }),
   setGameActive: (active) => set({ isGameActive: active }),
   setGameState: (state) => set({ gameState: state }),
@@ -181,6 +184,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   setMultiplier: (multiplier) => set({ multiplier }),
   setIntegrity: (integrity) => set({ integrity }),
   setCrashPoint: (crashPoint) => set({ crashPoint }),
+  
+  // Batch update for better performance during fast updates
+  setGameStateBatch: (updates) => set((state) => ({ ...state, ...updates })),
   
   // Player actions
   setPlayerBalance: (balance) => set({ playerBalance: balance }),

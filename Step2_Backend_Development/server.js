@@ -22,19 +22,19 @@ const swaggerUi = require('swagger-ui-express');
 const winston = require('winston');
 const gameEngine = require('./services/gameEngine');
 const logger = require('./utils/logger');
-const chatService = require('./services/chatService'); // Added
+const chatService = require('./services/chatService');
 const paymentService = require('./services/paymentService');
+const db = require('./db');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true
   }
 });
 
-// Pass io instance to game engine for WebSocket events
 gameEngine.setIo(io);
 
 const swaggerSpec = swaggerJsdoc({
@@ -51,7 +51,7 @@ const swaggerSpec = swaggerJsdoc({
 app.use(express.json());
 app.use(helmet());
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -65,7 +65,7 @@ app.use('/api/history', historyRoutes);
 app.use('/api/community-goals', communityGoalsRoutes);
 app.use('/api/insurance', insuranceRoutes);
 app.use('/api/payment', paymentRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1', apiV1Router);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -74,26 +74,69 @@ app.get('/', (req, res) => {
   res.send('PillarPayout Backend Server is running');
 });
 
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    const dbHealth = await db.query('SELECT 1 as health');
+    const dbStatus = dbHealth.rows.length > 0 ? 'healthy' : 'unhealthy';
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+      redis: 'unavailable',
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    logger.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
+});
+
 // WebSocket connection handler
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   logger.info('User connected:', socket.id);
 
   // Join game room
   socket.join('game');
 
-  // Send current game state to new connection
-  socket.emit('game_update', {
-    type: 'initial_state',
-    data: gameEngine.getGameState()
-  });
+  try {
+    // Send current game state to new connection - ENHANCED FOR FRONTEND SYNC
+    const gameState = await gameEngine.getGameState();
+    socket.emit('game_update', {
+      type: 'initial_state',
+      data: gameState // ✅ Use fresh state
+    });
 
-  // Send chat history to new connection
-  const chatHistory = chatService.getChatHistory(50);
-  socket.emit('chat_history', chatHistory);
+    // Send chat history to new connection
+    const chatHistory = chatService.getChatHistory(50);
+    socket.emit('chat_history', chatHistory);
 
-  // Send active users to new connection
-  const activeUsers = chatService.getActiveUsers();
-  socket.emit('active_users', activeUsers);
+    // Send active users to new connection
+    const activeUsers = chatService.getActiveUsers();
+    socket.emit('active_users', activeUsers);
+
+    // ✅ CRITICAL: Send crash point information for frontend sync
+    if (gameState.crashPoint) {
+      socket.emit('game_update', {
+        type: 'crash_point_info',
+        data: {
+          crashPoint: gameState.crashPoint,
+          roundId: gameState.roundId
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Error sending initial game state:', error);
+    // Send basic state as fallback
+    socket.emit('game_update', {
+      type: 'initial_state',
+      data: { gameState: 'waiting', multiplier: 1.0, integrity: 100 }
+    });
+  }
 
   // Handle user joining chat
   socket.on('join_chat', (data) => {
@@ -136,42 +179,33 @@ io.on('connection', (socket) => {
           }
           break;
         default:
-          logger.warn('Unknown player action:', action);
+          socket.emit('error', { message: 'Invalid action' });
       }
     } catch (error) {
       logger.error('Error handling player action:', error);
-      socket.emit('error', { message: error.message });
+      socket.emit('error', { message: 'Action failed', error: error.message });
     }
   });
 
   // Handle chat messages
-  socket.on('chat_message', async (data) => {
+  socket.on('chat_message', (data) => {
     try {
-      const { userId, message, roundId } = data;
-
-      if (!userId || !message) {
-        socket.emit('chat_error', { message: 'Missing userId or message' });
-        return;
+      const { userId, username, message } = data;
+      if (userId && username && message) {
+        const chatMessage = chatService.sendUserMessage(userId, username, message);
+        io.to('game').emit('chat_message', chatMessage);
+        logger.info(`Chat message from ${username}: ${message}`);
       }
-
-      // Send message through chat service
-      const chatMessage = await chatService.sendMessage(userId, message, roundId);
-      
-      // Broadcast chat message to all connected clients
-      io.to('game').emit('chat_message', chatMessage);
-      
-      logger.info(`Chat message from user ${userId}: ${message}`);
     } catch (error) {
       logger.error('Error handling chat message:', error);
-      socket.emit('chat_error', { message: error.message });
     }
   });
 
-  // Handle user leaving
-  socket.on('user_leave', (data) => {
+  // Handle user leaving chat
+  socket.on('leave_chat', (data) => {
     try {
       const { userId, username } = data;
-      if (userId) {
+      if (userId && username) {
         chatService.removeActiveUser(userId);
         
         // Broadcast user left message
@@ -217,7 +251,7 @@ setInterval(async () => {
   } catch (error) {
     logger.error('Error broadcasting game state:', error);
   }
-}, 100); // Update every 100ms
+}, 1000); // Update every 1000ms (reduced from 100ms to prevent excessive logging)
 
 // Chat cleanup interval (clean up inactive users every 5 minutes)
 setInterval(() => {

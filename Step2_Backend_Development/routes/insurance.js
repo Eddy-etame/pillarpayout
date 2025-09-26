@@ -13,10 +13,10 @@ router.post('/purchase', authMiddleware, insuranceController.purchaseInsurance);
 router.get('/history', authMiddleware, insuranceController.getInsuranceHistory);
 
 // Admin routes
-router.get('/stats', authMiddleware, adminMiddleware, insuranceController.getInsuranceStats);
-router.get('/profitability', authMiddleware, adminMiddleware, insuranceController.getProfitabilityMetrics);
-router.post('/claim/:betId', authMiddleware, adminMiddleware, insuranceController.processInsuranceClaim);
-router.post('/cache/clear', authMiddleware, adminMiddleware, insuranceController.clearCache);
-router.get('/cache/info', authMiddleware, adminMiddleware, insuranceController.getCacheInfo);
+router.get('/stats', authMiddleware, adminMiddleware.adminAuthMiddleware, insuranceController.getInsuranceStats);
+router.get('/profitability', authMiddleware, adminMiddleware.adminAuthMiddleware, insuranceController.getProfitabilityMetrics);
+router.post('/claim/:betId', authMiddleware, adminMiddleware.adminAuthMiddleware, insuranceController.processInsuranceClaim);
+router.post('/cache/clear', authMiddleware, adminMiddleware.adminAuthMiddleware, insuranceController.clearCache);
+router.get('/cache/info', authMiddleware, adminMiddleware.adminAuthMiddleware, insuranceController.getCacheInfo);
 
 module.exports = router; 

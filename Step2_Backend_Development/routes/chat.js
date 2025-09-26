@@ -13,7 +13,7 @@ router.get('/stats', chatController.getChatStats);
 router.post('/send', authMiddleware, chatController.sendMessage);
 
 // Admin routes (admin authentication required)
-router.post('/clear', authMiddleware, adminMiddleware, chatController.clearChatHistory);
-router.post('/ban', authMiddleware, adminMiddleware, chatController.banUser);
+router.post('/clear', authMiddleware, adminMiddleware.adminAuthMiddleware, chatController.clearChatHistory);
+router.post('/ban', authMiddleware, adminMiddleware.adminAuthMiddleware, chatController.banUser);
 
 module.exports = router; 

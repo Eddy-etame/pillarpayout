@@ -45,6 +45,7 @@ describe('Admin API', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
   test('GET /api/v1/admin/logs returns logs', async () => {
@@ -53,5 +54,25 @@ describe('Admin API', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+  });
+
+  test('Admin endpoints return JSON responses (not HTML)', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.text).not.toContain('<!DOCTYPE');
+    expect(res.text).not.toContain('<html>');
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+  });
+
+  test('Admin endpoints handle errors with JSON', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', 'Bearer invalid-token');
+    expect(res.statusCode).toBe(403);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.body).toHaveProperty('error');
   });
 }); 

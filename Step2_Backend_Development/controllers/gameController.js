@@ -85,11 +85,73 @@ const getGameState = async (req, res) => {
 const getRoundHistory = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const history = await gameEngine.getRoundHistory(limit);
+    const userId = req.user?.id || null;
+    
+    const history = await gameEngine.getRoundHistory(limit, userId);
     res.json(history);
   } catch (error) {
     logger.error('Error getting round history:', error);
     res.status(500).json({ error: 'Failed to get round history' });
+  }
+};
+
+/**
+ * @swagger
+ * /api/v1/game/user-history:
+ *   get:
+ *     summary: Get user's round history with win/loss information
+ *     tags: [Game]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of rounds to return
+ *     responses:
+ *       200:
+ *         description: User round history retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   round_id:
+ *                     type: integer
+ *                   crash_point:
+ *                     type: number
+ *                   timestamp:
+ *                     type: string
+ *                   result:
+ *                     type: string
+ *                     enum: [win, loss]
+ *                   bet_amount:
+ *                     type: number
+ *                   cashout_multiplier:
+ *                     type: number
+ *                   final_multiplier:
+ *                     type: number
+ *                   winnings:
+ *                     type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+const getUserRoundHistory = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const userId = req.user.id;
+    
+    const history = await gameEngine.getRoundHistory(limit, userId);
+    res.json(history);
+  } catch (error) {
+    logger.error('Error getting user round history:', error);
+    res.status(500).json({ error: 'Failed to get user round history' });
   }
 };
 
@@ -273,10 +335,74 @@ const verifyCrashPoint = async (req, res) => {
   }
 };
 
+// Get live bets for current round
+const getLiveBets = async (req, res) => {
+  try {
+    const liveBets = Array.from(gameEngine.activeBets.values()).map(bet => ({
+      userId: bet.userId,
+      username: bet.username,
+      amount: bet.amount,
+      timestamp: bet.timestamp,
+      hasInsurance: !!bet.insurance
+    }));
+    res.json(liveBets);
+  } catch (error) {
+    logger.error('Error getting live bets:', error);
+    res.status(500).json({ error: 'Failed to get live bets' });
+  }
+};
+
+// Get active players count
+const getActivePlayers = async (req, res) => {
+  try {
+    const activePlayers = gameEngine.activePlayers.size;
+    res.json({ activePlayers });
+  } catch (error) {
+    logger.error('Error getting active players:', error);
+    res.status(500).json({ error: 'Failed to get active players' });
+  }
+};
+
+// Get user statistics
+const getUserStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const stats = await gameEngine.getUserStats(userId);
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting user stats:', error);
+    res.status(500).json({ error: 'Failed to get user stats' });
+  }
+};
+
+// Place bet with insurance
+const placeBetWithInsurance = async (req, res) => {
+  try {
+    const { error, value } = placeBetSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { amount, insuranceType } = value;
+    const userId = req.user.id;
+
+    const result = await gameEngine.placeBet(userId, amount, insuranceType);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error placing bet with insurance:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getGameState,
   getRoundHistory,
+  getUserRoundHistory,
   placeBet,
   cashOut,
-  verifyCrashPoint
+  verifyCrashPoint,
+  getLiveBets,
+  getActivePlayers,
+  getUserStats,
+  placeBetWithInsurance
 }; 

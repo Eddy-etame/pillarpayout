@@ -31,7 +31,7 @@ const RechargePage: React.FC = () => {
   const [walletAddress, setWalletAddress] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [params] = useSearchParams();
-  const { user, updateBalance, token } = useAuthStore();
+  const { user } = useAuthStore();
 
   const quickAmounts = [1000, 2500, 5000, 10000, 25000, 50000]; // FCFA
 
@@ -88,10 +88,22 @@ const RechargePage: React.FC = () => {
     setMessage(null);
 
     try {
+      // Debug: Log user information
+      console.log('Current user:', user);
+      console.log('User ID being sent:', user?.id);
+      
+      // Validate user is logged in
+      if (!user || !user.id) {
+        setMessage({ type: 'error', text: 'User not properly authenticated. Please log in again.' });
+        return;
+      }
+      
       // Prepare payment data
       const paymentData: any = {
         amount: formData.amount,
-        paymentMethod: formData.paymentMethod
+        paymentMethod: formData.paymentMethod,
+        userId: user.id,
+        email: user.email
       };
 
       // Add method-specific data
@@ -116,11 +128,7 @@ const RechargePage: React.FC = () => {
       }
 
       // Make API call to backend
-      const response = await api.post('/payment/recharge', paymentData, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await api.post('/payment/recharge', paymentData);
 
       if (response.data.success) {
         setMessage({ 
@@ -130,7 +138,15 @@ const RechargePage: React.FC = () => {
         
         // Update local balance if payment is completed immediately
         if (response.data.transaction.status === 'completed') {
-          updateBalance(((user?.balance as number) || 0) + formData.amount);
+          // Update balance locally since we know the recharge was successful
+          const newBalance = (user?.balance || 0) + formData.amount;
+          useAuthStore.getState().updateBalance(newBalance);
+        } else {
+          // For pending transactions (like mobile money), update after a delay
+          setTimeout(() => {
+            const newBalance = (user?.balance || 0) + formData.amount;
+            useAuthStore.getState().updateBalance(newBalance);
+          }, 5000); // 5 seconds delay
         }
         
         // Reset form

@@ -5,39 +5,41 @@ const emailService = require('./emailService');
 const logger = require('../utils/logger');
 const config = require('../config');
 
+class CustomError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+}
+
 class UserService {
   async registerUser(userData) {
     try {
       const { username, email, password } = userData;
 
-      // Validate email format and existence
       const emailValidation = await emailService.validateEmail(email);
       if (!emailValidation.valid) {
-        throw new Error(`Email validation failed: ${emailValidation.reason}`);
+        throw new CustomError(`Email validation failed: ${emailValidation.reason}`, 'EMAIL_INVALID');
       }
 
-      // Check if username already exists
       const existingUser = await userModel.findByUsername(username);
       if (existingUser) {
-        throw new Error('Username already exists');
+        throw new CustomError('Username already exists', 'DUPLICATE_USERNAME');
       }
 
-      // Check if email already exists
       const existingEmail = await userModel.findByEmail(email);
       if (existingEmail) {
-        throw new Error('Email already registered');
+        throw new CustomError('Email already registered', 'DUPLICATE_EMAIL');
       }
 
-      // Hash password
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      // Create user
       const newUser = await userModel.createUser({
         username,
         email,
         password_hash: hashedPassword,
-        balance: 1000, // Starting balance
+        balance: 1000,
         role: 'player'
       });
 
@@ -58,7 +60,6 @@ class UserService {
     try {
       let user;
 
-      // Find user by username or email
       if (loginType === 'email') {
         user = await userModel.findByEmail(identifier);
       } else {
@@ -66,16 +67,18 @@ class UserService {
       }
 
       if (!user) {
-        throw new Error('Invalid credentials');
+        throw new CustomError('Invalid credentials', 'INVALID_CREDENTIALS');
       }
 
-      // Verify password
       const isPasswordValid = await bcrypt.compare(password, user.password_hash);
       if (!isPasswordValid) {
-        throw new Error('Invalid credentials');
+        throw new CustomError('Invalid credentials', 'INVALID_CREDENTIALS');
       }
 
-      // Generate JWT token
+      if (!config.jwtSecret) {
+        throw new CustomError('JWT secret is not configured', 'CONFIG_ERROR');
+      }
+
       const token = jwt.sign(
         { 
           id: user.id, 
@@ -97,7 +100,8 @@ class UserService {
           username: user.username,
           email: user.email,
           balance: user.balance,
-          role: user.role
+          role: user.role,
+          isAdmin: user.is_admin || user.role === 'admin'
         }
       };
     } catch (error) {
@@ -110,7 +114,7 @@ class UserService {
     try {
       const user = await userModel.findById(userId);
       if (!user) {
-        throw new Error('User not found');
+        throw new CustomError('User not found', 'USER_NOT_FOUND');
       }
 
       return {
@@ -119,6 +123,7 @@ class UserService {
         email: user.email,
         balance: user.balance,
         role: user.role,
+        isAdmin: user.is_admin || user.role === 'admin',
         created_at: user.created_at
       };
     } catch (error) {

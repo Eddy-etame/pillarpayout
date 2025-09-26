@@ -8,9 +8,9 @@ const adminMiddleware = require('../middleware/adminMiddleware');
 router.get('/', tournamentController.getActiveTournaments);
 
 // Admin routes (specific routes first)
-router.get('/stats', authMiddleware, adminMiddleware, tournamentController.getTournamentStats);
-router.post('/cache/clear', authMiddleware, adminMiddleware, tournamentController.clearCache);
-router.get('/cache/info', authMiddleware, adminMiddleware, tournamentController.getCacheInfo);
+router.get('/stats', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.getTournamentStats);
+router.post('/cache/clear', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.clearCache);
+router.get('/cache/info', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.getCacheInfo);
 
 // Parameterized routes (after specific routes)
 router.get('/:tournamentId', tournamentController.getTournamentById);
@@ -20,8 +20,8 @@ router.post('/join', authMiddleware, tournamentController.joinTournament);
 router.get('/user', authMiddleware, tournamentController.getUserTournaments);
 
 // Admin routes (parameterized)
-router.post('/', authMiddleware, adminMiddleware, tournamentController.createTournament);
-router.post('/:tournamentId/start', authMiddleware, adminMiddleware, tournamentController.startTournament);
-router.post('/:tournamentId/end', authMiddleware, adminMiddleware, tournamentController.endTournament);
+router.post('/', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.createTournament);
+router.post('/:tournamentId/start', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.startTournament);
+router.post('/:tournamentId/end', authMiddleware, adminMiddleware.adminAuthMiddleware, tournamentController.endTournament);
 
 module.exports = router; 

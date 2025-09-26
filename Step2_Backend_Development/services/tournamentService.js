@@ -521,11 +521,82 @@ class TournamentService {
     logger.info('Tournament cache cleared');
   }
 
+  // Update player score for tournament tracking
+  async updatePlayerScore(userId, betId, amount, action, additionalData = {}) {
+    try {
+      // Get all active tournaments
+      const activeTournaments = Array.from(this.activeTournaments.values())
+        .filter(t => t.status === 'active');
+      
+      for (const tournament of activeTournaments) {
+        // Check if user is participating in this tournament
+        const participant = this.tournamentParticipants.get(tournament.id)
+          ?.find(p => p.userId === userId);
+        
+        if (participant) {
+          // Update participant stats based on action
+          switch (action) {
+            case 'bet_placed':
+              participant.totalBets++;
+              participant.totalWagered += amount;
+              participant.score += amount * 0.1; // Small score boost for placing bet
+              break;
+              
+            case 'cashout':
+              const { multiplier, winnings } = additionalData;
+              participant.totalWon += winnings;
+              participant.biggestWin = Math.max(participant.biggestWin, winnings);
+              participant.highestMultiplier = Math.max(participant.highestMultiplier, multiplier);
+              participant.score += winnings * 0.5; // Higher score boost for winning
+              break;
+              
+            case 'bet_lost':
+              participant.score += amount * 0.05; // Small score boost even for losing (participation)
+              break;
+          }
+          
+          // Update participant in database
+          await this.updateParticipantInDatabase(tournament.id, participant);
+          
+          // Update tournament leaderboard
+          await this.updateTournamentLeaderboard(tournament.id);
+          
+          logger.info(`Updated tournament score for user ${userId} in tournament ${tournament.id}: ${action}`);
+        }
+      }
+      
+      return { success: true, tournamentsUpdated: activeTournaments.length };
+    } catch (error) {
+      logger.error(`Error updating tournament score for user ${userId}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Update tournament leaderboard
+  async updateTournamentLeaderboard(tournamentId) {
+    try {
+      const participants = this.tournamentParticipants.get(tournamentId) || [];
+      
+      // Sort participants by score (descending)
+      participants.sort((a, b) => b.score - a.score);
+      
+      // Update tournament leaderboard
+      const tournament = this.activeTournaments.get(tournamentId);
+      if (tournament) {
+        tournament.leaderboard = participants.slice(0, 10); // Top 10 players
+      }
+      
+      logger.info(`Updated leaderboard for tournament ${tournamentId}`);
+    } catch (error) {
+      logger.error(`Error updating tournament leaderboard for ${tournamentId}:`, error);
+    }
+  }
+
   // Get cache statistics
   getCacheStats() {
     return {
       activeTournaments: this.activeTournaments.size,
-      tournamentParticipants: this.tournamentParticipants.size,
+      tournamentParticipants: this.activeTournaments.size,
       tournamentScores: this.tournamentScores.size
     };
   }

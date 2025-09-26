@@ -64,20 +64,20 @@ const Tower3D: React.FC<Tower3DProps> = ({ multiplier, gameState, integrity }) =
     return blockArray;
   }, [numBlocks]);
 
-  // Animation
+  // Animation - optimized for faster updates
   useFrame((state) => {
     if (groupRef.current) {
       // Apply dynamic scale
       groupRef.current.scale.set(groupScale, groupScale, groupScale);
       
-      // Gentle rotation only when not crashed
+      // Gentle rotation only when not crashed - smoother for faster updates
       if (!isCrashedRef.current && gameState === 'running') {
-        groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.1;
+        groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.08;
       }
       
-      // Handle crash animation
+      // Handle crash animation - faster for better responsiveness
       if (isCrashedRef.current) {
-        crashAnimationRef.current += 0.05;
+        crashAnimationRef.current += 0.08; // Increased from 0.05 for faster crash animation
         
         // Animate blocks falling
         blocks.forEach((block, index) => {
@@ -119,6 +119,12 @@ const Tower3D: React.FC<Tower3DProps> = ({ multiplier, gameState, integrity }) =
       }
     }
   });
+
+  // Safety check to ensure all props are defined - AFTER all hooks
+  if (!gameState || multiplier === undefined || integrity === undefined) {
+    console.warn('Tower3D: Missing props:', { gameState, multiplier, integrity });
+    return null; // Don't render until props are ready
+  }
 
   // Get color based on game state and integrity
   const getTowerColor = (blockIndex: number) => {
@@ -228,7 +234,7 @@ const Tower3D: React.FC<Tower3DProps> = ({ multiplier, gameState, integrity }) =
       >
         {gameState === 'crashed' ? 'CRASHED!' : 
          gameState === 'results' ? 'VICTORY LAP!' : 
-         gameState.toUpperCase()}
+         (gameState || 'WAITING').toUpperCase()}
       </Text>
 
       {/* Crash effect particles when crashed */}

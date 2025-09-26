@@ -290,7 +290,7 @@ class PaymentService {
    */
   async processMobileMoneyPayment(amount, phoneNumber, provider, userId) {
     try {
-      logger.info(`Processing ${provider} mobile money payment: ${amount} FCFA to ${phoneNumber}`);
+      logger.info(`Processing ${provider} mobile money payment: ${amount} FCFA to ${phoneNumber}, userId: ${userId}`);
 
       let client;
       if (provider === 'mtn' && this.mtnClient) {
@@ -461,6 +461,8 @@ class PaymentService {
    */
   async createTransactionRecord(transactionData) {
     try {
+      logger.info(`Creating transaction record: userId=${transactionData.userId}, amount=${transactionData.amount}, method=${transactionData.paymentMethod}`);
+      
       const result = await db.query(`
         INSERT INTO payment_transactions (
           user_id, amount, payment_method, gateway, gateway_transaction_id,
@@ -577,16 +579,16 @@ class PaymentService {
   /**
    * Handle successful payment
    */
-  async handleSuccessfulPayment(userId, amount, gatewayTransactionId, gateway) {
+  async handleSuccessfulPayment(userId, amount, transactionId, gateway) {
     try {
-      // Find transaction by gateway transaction ID
+      // Find transaction by transaction ID (since we're passing transaction.id)
       const result = await db.query(`
         SELECT * FROM payment_transactions 
-        WHERE gateway_transaction_id = $1 AND gateway = $2
-      `, [gatewayTransactionId, gateway]);
+        WHERE id = $1
+      `, [transactionId]);
 
       if (result.rows.length === 0) {
-        throw new Error(`Transaction not found: ${gatewayTransactionId}`);
+        throw new Error(`Transaction not found: ${transactionId}`);
       }
 
       const transaction = result.rows[0];
@@ -603,7 +605,7 @@ class PaymentService {
       `, [amount, userId]);
 
       // Log successful recharge
-      logger.info(`Recharge completed: User ${userId}, Amount ${amount} FCFA, Gateway ${gateway}`);
+      logger.info(`Recharge completed: User ${userId}, Amount ${amount} FCFA, Transaction ${transactionId}, Gateway ${gateway}`);
 
       return transaction;
     } catch (error) {

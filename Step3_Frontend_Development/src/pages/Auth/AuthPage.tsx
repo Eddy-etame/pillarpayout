@@ -55,6 +55,8 @@ const AuthPage: React.FC = () => {
       if (response.ok) {
         if (isLogin) {
           login(data.user, data.token);
+          // Persist token for axios interceptor
+          try { localStorage.setItem('authToken', data.token); } catch {}
           navigate('/game');
         } else {
           // For registration, show success message and switch to login after delay
