@@ -27,10 +27,10 @@ class GameEngine {
     
     // House advantage configuration - OPTIMIZED FOR FCFA PROFITABILITY
     this.MEDIUM_BET_AMOUNT = 400.00; // 400 FCFA as medium amount (your target average)
-    this.BASE_CRASH_PROBABILITY = 0.87; // 87% base crash probability (increased for profitability)
-    this.HOUSE_ADVANTAGE_FACTOR = 0.18; // 18% house advantage (increased for profitability)
-    this.MAX_CRASH_PROBABILITY = 0.96; // 96% max crash probability (increased for profitability)
-    this.MIN_CRASH_PROBABILITY = 0.78; // 78% min crash probability (increased for profitability)
+    this.BASE_CRASH_PROBABILITY = 0.95; // 95% base crash probability (increased for profitability)
+    this.HOUSE_ADVANTAGE_FACTOR = 0.25; // 25% house advantage (increased for profitability)
+    this.MAX_CRASH_PROBABILITY = 0.99; // 99% max crash probability (increased for profitability)
+    this.MIN_CRASH_PROBABILITY = 0.90; // 90% min crash probability (increased for profitability)
     
     // Performance monitoring
     this.performanceMetrics = {
@@ -96,11 +96,11 @@ class GameEngine {
     // Calculate crash point based on probability - OPTIMIZED FOR PROFITABILITY
     if (randomValue < adjustedProbability) {
       // Tower will crash - calculate crash point (MORE AGGRESSIVE)
-      const crashPoint = 1.00 + (randomValue / adjustedProbability) * 3.50; // 1.00x to 4.50x (reduced from 5.00x)
+      const crashPoint = 1.00 + (randomValue / adjustedProbability) * 2.00; // 1.00x to 3.00x (very aggressive)
       return parseFloat(crashPoint.toFixed(2));
     } else {
       // Tower will continue - higher crash point (MAINTAINS ENGAGEMENT)
-      const crashPoint = 4.50 + (randomValue - adjustedProbability) / (1 - adjustedProbability) * 15.50; // 4.50x to 20.00x
+      const crashPoint = 3.00 + (randomValue - adjustedProbability) / (1 - adjustedProbability) * 4.00; // 3.00x to 7.00x (much reduced max)
       return parseFloat(crashPoint.toFixed(2));
     }
   }
@@ -123,6 +123,7 @@ class GameEngine {
       );
 
       this.roundId = roundResult.rows[0].id;
+      this.currentRound = this.roundId; // Set currentRound for admin dashboard
       this.roundStartTime = Date.now();
       this.lastUpdateTime = Date.now();
 
@@ -187,7 +188,7 @@ class GameEngine {
       
       // Update multiplier every 100ms for smooth frontend animation (was 1000ms)
       if (timeDiff >= 100) {
-        this.multiplier += 0.005; // 0.005x per 100ms = 0.05x per second (matches frontend expectation)
+        this.multiplier += 0.02; // 0.02x per 100ms = 0.2x per second (4x faster for more excitement)
         this.integrity = Math.max(0, 100 - (this.multiplier - 1) * 20);
         
         this.lastUpdateTime = now;
@@ -210,10 +211,11 @@ class GameEngine {
         
         // Check if tower should crash
         if (this.multiplier >= this.crashPoint) {
+          logger.info(`Tower crashing at ${this.multiplier.toFixed(2)}x (target: ${this.crashPoint}x)`);
           this.crashTower();
         }
       }
-    }, 100); // Changed to 100ms for faster, more engaging gameplay (0.05x per 100ms = 0.5x per second)
+    }, 20); // Changed to 20ms for much faster, more engaging gameplay (0.5x per 20ms = 25x per second)
 
     logger.info(`Round ${this.roundId} running phase started`);
   }
@@ -223,11 +225,11 @@ class GameEngine {
     const now = Date.now();
     const elapsed = now - this.lastUpdateTime;
 
-    // Update multiplier (increases by 0.05 every 100ms for faster gameplay)
-    this.multiplier += 0.05;
+    // Update multiplier (increases by 0.5 every 25ms for much faster gameplay)
+    this.multiplier += 0.5;
 
-    // Update integrity meter (decreases by 0-2% randomly)
-    const integrityDecrease = Math.random() * 2;
+    // Update integrity meter (decreases by 0-1% randomly for balanced gameplay)
+    const integrityDecrease = Math.random() * 1;
     this.integrity = Math.max(0, this.integrity - integrityDecrease);
 
     // Check for special blocks (5% chance)
@@ -237,6 +239,7 @@ class GameEngine {
 
     // Check if tower should crash
     if (this.multiplier >= this.crashPoint) {
+      logger.info(`Tower crashing at ${this.multiplier.toFixed(2)}x (target: ${this.crashPoint}x)`);
       this.crashTower();
       return;
     }
@@ -412,8 +415,7 @@ class GameEngine {
     // Process insurance claim if bet had insurance
     if (bet.insurance) {
       try {
-        const insuranceService = require('./insuranceService');
-        const insurance = new insuranceService();
+        const insurance = require('./insuranceService');
         
         // Process insurance claim
         const claimResult = await insurance.processInsuranceClaim(bet.betId);
@@ -433,11 +435,11 @@ class GameEngine {
       }
     }
     
-    await playerStatsService.updateStatsAfterLoss(userId, bet.amount);
+    await playerStatsService.updateStatsAfterBet(userId, bet.amount);
   }
 
   // Place a bet with optional insurance
-  async placeBet(userId, amount, insuranceType = null) {
+  async placeBet(userId, amount, insuranceType = null, insuranceGames = 1) {
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
@@ -480,33 +482,40 @@ class GameEngine {
       let insuranceDetails = null;
       if (insuranceType && ['basic', 'premium', 'elite'].includes(insuranceType)) {
         try {
-          const insuranceService = require('./insuranceService');
-          const insurance = new insuranceService();
+          const insurance = require('./insuranceService');
           
-          // Calculate insurance premium
+          // Calculate insurance premium for multiple games
           const insuranceCalculation = insurance.calculateInsurancePremium(amount, insuranceType);
+          const totalPremium = insuranceCalculation.premium * insuranceGames;
+          const totalCoverage = insuranceCalculation.coverageAmount * insuranceGames;
           
           // Check if user has sufficient balance for insurance premium
-          if (userBalance >= (amount + insuranceCalculation.premium)) {
+          if (userBalance >= (amount + totalPremium)) {
             // Deduct insurance premium
             await client.query(
               'UPDATE users SET balance = balance - $1 WHERE id = $2',
-              [insuranceCalculation.premium, userId]
+              [totalPremium, userId]
             );
             
-            // Create insurance record
+            // Create insurance record with multi-game data
             await client.query(`
               INSERT INTO bet_insurance (
                 user_id, bet_id, insurance_type, bet_amount, premium_amount, 
-                coverage_rate, coverage_amount, status, purchased_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                coverage_rate, coverage_amount, status, purchased_at, games_count, games_remaining
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10)
             `, [
-              userId, betId, insuranceType, amount, insuranceCalculation.premium,
-              insuranceCalculation.coverageRate, insuranceCalculation.coverageAmount, 'active'
+              userId, betId, insuranceType, amount, totalPremium,
+              insuranceCalculation.coverageRate, totalCoverage, 'active', insuranceGames, insuranceGames
             ]);
             
-            insuranceDetails = insuranceCalculation;
-            logger.info(`Insurance purchased for bet ${betId}: ${insuranceType} type, premium ${insuranceCalculation.premium} FCFA`);
+            insuranceDetails = {
+              ...insuranceCalculation,
+              totalPremium,
+              totalCoverage,
+              gamesCount: insuranceGames,
+              gamesRemaining: insuranceGames
+            };
+            logger.info(`Insurance purchased for bet ${betId}: ${insuranceType} type, premium ${totalPremium} FCFA for ${insuranceGames} games`);
           } else {
             logger.warn(`User ${userId} insufficient balance for insurance premium`);
           }
@@ -537,12 +546,29 @@ class GameEngine {
 
       // Update tournament scores if user is participating in active tournaments
       try {
-        const tournamentService = require('./tournamentService');
-        const tournament = new tournamentService();
+        const tournament = require('./tournamentService');
         await tournament.updatePlayerScore(userId, betId, amount, 'bet_placed');
       } catch (error) {
         logger.warn(`Error updating tournament score for user ${userId}:`, error);
         // Continue without tournament update if there's an error
+      }
+
+      // Update weekly tournament scores if user is participating
+      try {
+        const weeklyTournamentService = require('./weeklyTournamentService');
+        await weeklyTournamentService.updateWeeklyPlayerScore(userId, betId, amount, 'bet_placed');
+      } catch (error) {
+        logger.warn(`Error updating weekly tournament score for user ${userId}:`, error);
+        // Continue without tournament update if there's an error
+      }
+
+      // Contribute to community goals if user is participating
+      try {
+        const communityGoalsService = require('./communityGoalsService');
+        await communityGoalsService.contributeToActiveGoals(userId, amount, null);
+      } catch (error) {
+        logger.warn(`Error contributing to community goals for user ${userId}:`, error);
+        // Continue without community goals update if there's an error
       }
 
       // Recalculate crash point with new bet amount
@@ -606,8 +632,7 @@ class GameEngine {
 
       // Update tournament scores if user is participating in active tournaments
       try {
-        const tournamentService = require('./tournamentService');
-        const tournament = new tournamentService();
+        const tournament = require('./tournamentService');
         await tournament.updatePlayerScore(userId, bet.betId, bet.amount, 'cashout', {
           multiplier: this.multiplier,
           winnings: winnings
@@ -615,6 +640,30 @@ class GameEngine {
       } catch (error) {
         logger.warn(`Error updating tournament score for user ${userId}:`, error);
         // Continue without tournament update if there's an error
+      }
+
+      // Update weekly tournament scores if user is participating
+      try {
+        const weeklyTournamentService = require('./weeklyTournamentService');
+        await weeklyTournamentService.updateWeeklyPlayerScore(userId, bet.betId, bet.amount, 'cashout', {
+          multiplier: this.multiplier,
+          winnings: winnings
+        });
+      } catch (error) {
+        logger.warn(`Error updating weekly tournament score for user ${userId}:`, error);
+        // Continue without tournament update if there's an error
+      }
+
+      // Contribute to community goals with winning bet result
+      try {
+        const communityGoalsService = require('./communityGoalsService');
+        await communityGoalsService.contributeToActiveGoals(userId, bet.amount, {
+          cashoutMultiplier: this.multiplier,
+          winnings: winnings
+        });
+      } catch (error) {
+        logger.warn(`Error contributing to community goals for user ${userId}:`, error);
+        // Continue without community goals update if there's an error
       }
 
       this.activeBets.delete(userId);
@@ -680,6 +729,7 @@ class GameEngine {
   async updateRedisGameState() {
     const gameState = {
       roundId: this.roundId,
+      currentRound: this.currentRound,
       gameState: this.gameState,
       multiplier: this.multiplier,
       integrity: this.integrity,
@@ -702,6 +752,13 @@ class GameEngine {
     try {
       if (this.redisAvailable) {
         await redisClient.set('game_state', JSON.stringify(gameState), 'EX', 60); // 60 second expiry
+        
+        // Store individual keys for admin dashboard
+        await redisClient.set('game:state', this.gameState, 'EX', 60);
+        await redisClient.set('game:currentRound', this.currentRound?.toString() || '0', 'EX', 60);
+        await redisClient.set('game:crashPoint', this.crashPoint?.toString() || '1.0', 'EX', 60);
+        await redisClient.set('game:multiplier', this.multiplier?.toString() || '1.0', 'EX', 60);
+        await redisClient.set('game:paused', 'false', 'EX', 60);
       }
     } catch (error) {
       logger.warn('Redis not available, using in-memory state only');

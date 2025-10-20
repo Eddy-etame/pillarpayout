@@ -32,7 +32,8 @@ const InsuranceInterface: React.FC = () => {
         throw new Error('Failed to fetch insurance options');
       }
       
-      const options = await response.json();
+      const data = await response.json();
+      const options = Array.isArray(data) ? data : (data.data || []);
       setLocalInsuranceOptions(options);
       setInsuranceOptions(options);
     } catch (err) {
@@ -119,7 +120,7 @@ const InsuranceInterface: React.FC = () => {
       )}
       
       <div className="space-y-3">
-        {insuranceOptions.map((option) => (
+        {Array.isArray(insuranceOptions) && insuranceOptions.map((option) => (
           <div
             key={option.type}
             className={`border rounded-lg p-3 cursor-pointer transition-colors ${

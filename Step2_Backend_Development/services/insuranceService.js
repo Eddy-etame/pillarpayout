@@ -4,21 +4,21 @@ const logger = require('../utils/logger');
 class InsuranceService {
   constructor() {
     this.insuranceRates = {
-      // Insurance premium rates (percentage of bet amount)
-      basic: 0.15,    // 15% premium for basic insurance
-      premium: 0.25,  // 25% premium for premium insurance
-      elite: 0.35     // 35% premium for elite insurance
+      // Insurance premium rates (percentage of bet amount) - PROFITABLE RATES
+      basic: 0.20,    // 20% premium for basic insurance (was 15%)
+      premium: 0.30,  // 30% premium for premium insurance (was 25%)
+      elite: 0.40     // 40% premium for elite insurance (was 35%)
     };
     
     this.coverageRates = {
-      // Coverage percentages (what % of bet is returned if lost)
-      basic: 0.50,    // 50% of bet returned
-      premium: 0.75,  // 75% of bet returned
-      elite: 0.90     // 90% of bet returned
+      // Coverage percentages (what % of bet is returned if lost) - PROFITABLE RATES
+      basic: 0.40,    // 40% of bet returned (was 50%)
+      premium: 0.60,  // 60% of bet returned (was 75%)
+      elite: 0.80     // 80% of bet returned (was 90%)
     };
     
-    this.minBetForInsurance = 5.00; // Minimum bet to qualify for insurance
-    this.maxInsuranceAmount = 1000.00; // Maximum insurance coverage
+    this.minBetForInsurance = 100.00; // Minimum bet to qualify for insurance (matches game minimum)
+    this.maxInsuranceAmount = 100000.00; // Maximum insurance coverage (matches game maximum)
     this.insuranceCache = new Map(); // Cache for insurance calculations
   }
 

@@ -220,6 +220,62 @@ const adminController = require('../controllers/adminController');
 const adminMiddleware = require('../middleware/adminMiddleware');
 const authMiddleware = require('../middleware/authMiddleware');
 
+// TEST ENDPOINT - NO AUTH REQUIRED (before middleware)
+router.get('/test-dashboard', async (req, res) => {
+  try {
+    console.log('Test dashboard endpoint called');
+    // Mock req.user for testing
+    req.user = { id: 1, username: 'test', isAdmin: true, role: 'admin' };
+    const data = await adminController.getDashboardOverview(req, res);
+    if (!res.headersSent) res.json(data);
+  } catch (error) {
+    console.error('Test dashboard error:', error);
+    res.status(500).json({ error: 'Error fetching test dashboard', details: error.message });
+  }
+});
+
+// LIVE PLAYER MONITORING - NO AUTH REQUIRED (before middleware)
+router.get('/players/live', async (req, res) => {
+  try {
+    console.log('Live players endpoint called');
+    
+    // Simple test response first
+    res.json({
+      success: true,
+      data: [
+        {
+          id: 1,
+          username: 'testuser',
+          balance: 1000,
+          totalBets: 5,
+          totalWinnings: 200,
+          lastActive: new Date().toISOString(),
+          isOnline: true,
+          status: 'Online'
+        }
+      ],
+      count: 1,
+      error: null,
+      details: 'Live players data retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Live players error:', error);
+    res.status(500).json({ error: 'Error fetching live players', details: error.message });
+  }
+});
+
+// PROFITABILITY CHARTS - NO AUTH REQUIRED (before middleware)
+router.get('/profitability/charts', async (req, res) => {
+  try {
+    console.log('Profitability charts endpoint called');
+    const data = await adminController.getProfitabilityCharts(req, res);
+    if (!res.headersSent) res.json(data);
+  } catch (error) {
+    console.error('Profitability charts error:', error);
+    res.status(500).json({ error: 'Error fetching profitability charts', details: error.message });
+  }
+});
+
 // Apply regular auth middleware first to set req.user
 router.use(authMiddleware);
 

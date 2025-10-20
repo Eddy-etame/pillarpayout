@@ -7,6 +7,7 @@ import HomePage from './pages/Home/HomePage';
 import AuthPage from './pages/Auth/AuthPage';
 import GamePage from './pages/Game/GamePage';
 import ProfilePage from './pages/Profile/ProfilePage';
+import TournamentPage from './pages/Tournament/TournamentPage';
 import AdminPage from './pages/Admin/AdminPage';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import RechargePage from './pages/Auth/RechargePage';
@@ -57,6 +58,7 @@ function AppRoutes() {
       <Route path="/verify" element={<VerificationPage />} />
       <Route path="/game" element={<Protected><GamePage /></Protected>} />
       <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
+      <Route path="/tournaments" element={<Protected><TournamentPage /></Protected>} />
       <Route 
         path="/admin" 
         element={isAuthenticated && user?.isAdmin ? <AdminPage /> : <Navigate to="/auth" replace />} 

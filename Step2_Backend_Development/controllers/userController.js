@@ -262,9 +262,47 @@ const validateEmail = async (req, res) => {
   }
 };
 
+const refreshToken = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'User ID is required' 
+      });
+    }
+
+    // Get user from database
+    const result = await userService.getUserById(userId);
+    if (!result) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'User not found' 
+      });
+    }
+
+    // Generate new token
+    const newToken = userService.generateToken(result);
+    
+    res.json({
+      success: true,
+      token: newToken,
+      message: 'Token refreshed successfully'
+    });
+  } catch (error) {
+    logger.error('Token refresh error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Token refresh failed' 
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   getProfile,
-  validateEmail
+  validateEmail,
+  refreshToken
 };

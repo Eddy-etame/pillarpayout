@@ -35,11 +35,11 @@ class CommunityGoalsService {
       // Create goal in database
       const result = await db.query(`
         INSERT INTO community_goals (
-          name, description, target_blocks, current_blocks, reward, status, start_date, end_date, min_bet_amount, max_bet_amount
-        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW() + ($7 || ' hours')::INTERVAL, $8, $9)
+          title, description, target_amount, current_amount, reward_type, reward_value, duration, min_bet_amount, max_bet_amount, start_time, end_time, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW() + ($7 || ' hours')::INTERVAL, 'active')
         RETURNING id
       `, [
-        title, description, Math.ceil(targetAmount), 0, `${rewardType}:${rewardValue}`, 'active', duration, minBetAmount, maxBetAmount
+        title, description, targetAmount, 0, rewardType, rewardValue, duration, minBetAmount, maxBetAmount
       ]);
 
       const goalId = result.rows[0].id;
@@ -152,6 +152,25 @@ class CommunityGoalsService {
       return result.rows.map(row => this.formatGoal(row));
     } catch (error) {
       logger.error('Error getting completed goals:', error);
+      throw error;
+    }
+  }
+
+  // Contribute to all active goals for a user
+  async contributeToActiveGoals(userId, betAmount, betResult) {
+    try {
+      const activeGoals = await this.getActiveGoals();
+      
+      for (const goal of activeGoals) {
+        try {
+          await this.contributeToGoal(goal.id, userId, betAmount, betResult);
+        } catch (error) {
+          // Log error but continue with other goals
+          logger.warn(`Error contributing to goal ${goal.id} for user ${userId}:`, error.message);
+        }
+      }
+    } catch (error) {
+      logger.error('Error contributing to active goals:', error);
       throw error;
     }
   }

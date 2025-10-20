@@ -4,7 +4,8 @@ const logger = require('../utils/logger');
 
 // Validation schemas
 const placeBetSchema = Joi.object({
-  amount: Joi.number().min(1).max(1000).required()
+  amount: Joi.number().min(1).max(1000).required(),
+  insuranceType: Joi.string().valid('basic', 'premium', 'elite').optional()
 });
 
 const cashoutSchema = Joi.object({
@@ -205,7 +206,7 @@ const placeBet = async (req, res) => {
     }
 
     const userId = req.user.id;
-    const { amount } = value;
+    const { amount, insuranceType } = value;
 
     // Check if game is in waiting state
     const gameState = await gameEngine.getGameState();
@@ -218,7 +219,7 @@ const placeBet = async (req, res) => {
       return res.status(400).json({ error: 'You already have an active bet' });
     }
 
-    const result = await gameEngine.placeBet(userId, amount);
+    const result = await gameEngine.placeBet(userId, amount, insuranceType);
     res.json(result);
   } catch (error) {
     logger.error('Error placing bet:', error);

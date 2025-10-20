@@ -228,11 +228,20 @@ export const useWebSocket = () => {
       // Handle game events like bets, cashouts, etc.
       console.log('Game event received:', event);
       // You can emit a custom event here to update the chat component
-      window.dispatchEvent(new CustomEvent('game_event', { detail: event }));
+    });
+
+    socket.on('balance_update', (data) => {
+      // Handle balance updates from successful transactions
+      console.log('Balance update received:', data);
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && data.userId === currentUser.id) {
+        updateBalance(data.newBalance);
+        console.log(`💰 Balance updated! New balance: ${data.newBalance} FCFA (Added: ${data.amountAdded} FCFA)`);
+      }
     });
 
     socketRef.current = socket;
-  }, [handleGameUpdate]);
+  }, [handleGameUpdate, updateBalance]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {

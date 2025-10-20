@@ -112,12 +112,17 @@ class UserService {
 
   async getUserProfile(userId) {
     try {
+      console.log(`Getting user profile for user ID: ${userId}`);
       const user = await userModel.findById(userId);
+      console.log('User found in database:', user);
+      
       if (!user) {
         throw new CustomError('User not found', 'USER_NOT_FOUND');
       }
 
-      return {
+      console.log(`User balance from database: ${user.balance} (type: ${typeof user.balance})`);
+
+      const profile = {
         id: user.id,
         username: user.username,
         email: user.email,
@@ -126,7 +131,11 @@ class UserService {
         isAdmin: user.is_admin || user.role === 'admin',
         created_at: user.created_at
       };
+
+      console.log('Returning profile:', profile);
+      return profile;
     } catch (error) {
+      console.error('Error getting user profile:', error);
       logger.error('Error getting user profile:', error);
       throw error;
     }
@@ -148,6 +157,34 @@ class UserService {
       return await emailService.validateEmail(email);
     } catch (error) {
       logger.error('Error validating email:', error);
+      throw error;
+    }
+  }
+
+  async getUserById(userId) {
+    try {
+      const user = await userModel.findById(userId);
+      return user;
+    } catch (error) {
+      logger.error('Error getting user by ID:', error);
+      throw error;
+    }
+  }
+
+  generateToken(user) {
+    try {
+      return jwt.sign(
+        {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role 
+        },
+        config.jwtSecret,
+        { expiresIn: '24h' }
+      );
+    } catch (error) {
+      logger.error('Error generating token:', error);
       throw error;
     }
   }

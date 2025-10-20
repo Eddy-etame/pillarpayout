@@ -33,11 +33,30 @@ const TournamentInterface: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchActiveTournaments = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('http://localhost:3001/api/v1/weekly-tournaments');
+      if (!response.ok) {
+        throw new Error('Failed to fetch tournaments');
+      }
+      
+      const data = await response.json();
+      setTournaments(data.data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch tournaments');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const fetchUserTournaments = useCallback(async () => {
     if (!user) return;
     
     try {
-      const response = await fetch('http://localhost:3001/api/tournaments/user', {
+      const response = await fetch('http://localhost:3001/api/v1/weekly-tournaments/user', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -45,7 +64,7 @@ const TournamentInterface: React.FC = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setUserTournaments(data);
+        setUserTournaments(data.data || []);
       }
     } catch (err) {
       console.error('Failed to fetch user tournaments:', err);
@@ -57,36 +76,17 @@ const TournamentInterface: React.FC = () => {
     if (user) {
       fetchUserTournaments();
     }
-  }, [user, fetchUserTournaments]);
-
-  const fetchActiveTournaments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('http://localhost:3001/api/tournaments');
-      if (!response.ok) {
-        throw new Error('Failed to fetch tournaments');
-      }
-      
-      const data = await response.json();
-      setTournaments(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch tournaments');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [user, fetchUserTournaments, fetchActiveTournaments]);
 
 
 
   const fetchTournamentLeaderboard = async (tournamentId: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId}`);
+      const response = await fetch(`http://localhost:3001/api/v1/weekly-tournaments/${tournamentId}/leaderboard`);
       if (response.ok) {
         const data = await response.json();
-        if (data.leaderboard) {
-          setLeaderboard(data.leaderboard);
+        if (data.data) {
+          setLeaderboard(data.data);
         }
       }
     } catch (err) {
@@ -101,7 +101,7 @@ const TournamentInterface: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('http://localhost:3001/api/tournaments/join', {
+      const response = await fetch('http://localhost:3001/api/v1/weekly-tournaments/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

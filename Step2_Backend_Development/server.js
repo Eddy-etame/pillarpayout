@@ -17,6 +17,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const adminRoutes = require('./routes/admin');
 const apiV1Router = require('./routes/api');
+const weeklyTournamentRoutes = require('./routes/weeklyTournaments');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const winston = require('winston');
@@ -36,6 +37,7 @@ const io = new Server(server, {
 });
 
 gameEngine.setIo(io);
+paymentService.setIo(io);
 
 const swaggerSpec = swaggerJsdoc({
   definition: {
@@ -163,12 +165,12 @@ io.on('connection', async (socket) => {
   // Handle player actions
   socket.on('player_action', async (data) => {
     try {
-      const { action, amount, userId } = data;
+      const { action, amount, userId, insuranceType, insuranceGames } = data;
 
       switch (action) {
         case 'bet':
           if (userId && amount) {
-            const result = await gameEngine.placeBet(userId, amount);
+            const result = await gameEngine.placeBet(userId, amount, insuranceType, insuranceGames || 1);
             socket.emit('bet_result', result);
           }
           break;
@@ -251,7 +253,7 @@ setInterval(async () => {
   } catch (error) {
     logger.error('Error broadcasting game state:', error);
   }
-}, 1000); // Update every 1000ms (reduced from 100ms to prevent excessive logging)
+}, 25); // Update every 25ms for much faster tower speed
 
 // Chat cleanup interval (clean up inactive users every 5 minutes)
 setInterval(() => {

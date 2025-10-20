@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DollarSign, CreditCard, Wallet, ArrowLeft, Phone, AlertCircle, CheckCircle } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { formatXAF } from '../../utils/currency';
 import api from '../../services/api';
@@ -17,6 +17,8 @@ interface PaymentFormData {
 }
 
 const RechargePage: React.FC = () => {
+  const { user, isAuthenticated } = useAuthStore();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<PaymentFormData>({
     amount: 0,
     paymentMethod: 'mtn_mobile_money'
@@ -31,7 +33,6 @@ const RechargePage: React.FC = () => {
   const [walletAddress, setWalletAddress] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [params] = useSearchParams();
-  const { user } = useAuthStore();
 
   const quickAmounts = [1000, 2500, 5000, 10000, 25000, 50000]; // FCFA
 
@@ -41,6 +42,15 @@ const RechargePage: React.FC = () => {
       setFormData(prev => ({ ...prev, amount: parseInt(preset) }));
     }
   }, [params, formData.amount]);
+
+  // Authentication guard - redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      console.log('User not authenticated, redirecting to login...');
+      navigate('/login');
+      return;
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const validateForm = (): boolean => {
     if (!formData.amount || formData.amount < 1000) {
@@ -136,17 +146,24 @@ const RechargePage: React.FC = () => {
           text: `Recharge initiated successfully! Transaction ID: ${response.data.transaction.id}` 
         });
         
-        // Update local balance if payment is completed immediately
-        if (response.data.transaction.status === 'completed') {
-          // Update balance locally since we know the recharge was successful
+        // Always refresh user data from server after successful recharge
+        // This ensures we get the actual updated balance from the database
+        try {
+          console.log('Refreshing user data after successful recharge...');
+          await useAuthStore.getState().refreshUserData();
+          console.log('User data refreshed successfully');
+          
+          // Wait a moment for the state to update and verify
+          setTimeout(() => {
+            const updatedUser = useAuthStore.getState().user;
+            console.log('Final user balance after refresh:', updatedUser?.balance);
+          }, 1000);
+        } catch (error) {
+          console.error('Failed to refresh user data after recharge:', error);
+          // Fallback to local update if server refresh fails
           const newBalance = (user?.balance || 0) + formData.amount;
           useAuthStore.getState().updateBalance(newBalance);
-        } else {
-          // For pending transactions (like mobile money), update after a delay
-          setTimeout(() => {
-            const newBalance = (user?.balance || 0) + formData.amount;
-            useAuthStore.getState().updateBalance(newBalance);
-          }, 5000); // 5 seconds delay
+          console.log('Fallback balance update applied:', newBalance);
         }
         
         // Reset form

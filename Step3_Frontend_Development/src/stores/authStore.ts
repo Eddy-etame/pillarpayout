@@ -24,6 +24,9 @@ interface AuthState {
   updateUser: (userData: Partial<User>) => void;
   updateBalance: (newBalance: number) => void;
   refreshUserData: () => Promise<void>;
+  refreshToken: () => Promise<boolean>;
+  isTokenExpired: () => boolean;
+  handleBalanceUpdate: (balanceData: { userId: number; newBalance: number; amountAdded: number; transactionId: string }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -76,26 +79,107 @@ export const useAuthStore = create<AuthState>()(
       
       refreshUserData: async () => {
         const token = get().token;
-        if (!token) return;
+        if (!token) {
+          console.log('No token available for refresh');
+          return;
+        }
         
         try {
+          console.log('Refreshing user data from server...');
           const response = await fetch('http://localhost:3001/api/user/profile', {
             headers: {
               'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
             },
           });
           
+          console.log('Profile response status:', response.status);
+          
           if (response.ok) {
             const userData = await response.json();
-            const updatedUser = { ...get().user, ...userData };
-            set({
-              user: updatedUser,
-              isAdmin: updatedUser.isAdmin || updatedUser.role === 'admin',
-            });
+            console.log('Received user data:', userData);
+            
+            const currentUser = get().user;
+            if (currentUser) {
+              const updatedUser = { 
+                ...currentUser, 
+                ...userData,
+                balance: parseFloat(userData.balance || 0) // Ensure balance is a number
+              };
+              
+              console.log('Updated user data:', updatedUser);
+              
+              set({
+                user: updatedUser,
+                isAdmin: updatedUser.isAdmin || updatedUser.role === 'admin',
+              });
+              
+              console.log('User data refreshed successfully');
+            }
+          } else {
+            console.error('Failed to refresh user data:', response.status, response.statusText);
+            const errorData = await response.text();
+            console.error('Error response:', errorData);
           }
         } catch (error) {
           console.error('Failed to refresh user data:', error);
         }
+      },
+
+      // Add WebSocket balance update handler
+      handleBalanceUpdate: (balanceData: { userId: number; newBalance: number; amountAdded: number; transactionId: string }) => {
+        const currentUser = get().user;
+        if (currentUser && currentUser.id === balanceData.userId) {
+          console.log('WebSocket balance update received:', balanceData);
+          set({
+            user: { ...currentUser, balance: balanceData.newBalance },
+          });
+          console.log('Balance updated via WebSocket:', balanceData.newBalance);
+        }
+      },
+
+      isTokenExpired: () => {
+        const token = get().token;
+        if (!token) return true;
+        
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const currentTime = Math.floor(Date.now() / 1000);
+          return payload.exp < currentTime;
+        } catch (error) {
+          console.error('Error checking token expiry:', error);
+          return true;
+        }
+      },
+
+      refreshToken: async () => {
+        const { user, token } = get();
+        if (!user || !token) return false;
+        
+        try {
+          const response = await fetch('http://localhost:3001/api/auth/refresh', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ userId: user.id }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.token) {
+              set({ token: data.token });
+              return true;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to refresh token:', error);
+        }
+        
+        // If refresh fails, logout user
+        get().logout();
+        return false;
       },
     }),
     {

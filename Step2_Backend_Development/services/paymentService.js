@@ -28,6 +28,9 @@ class PaymentService {
       }
     };
 
+    // WebSocket instance for real-time updates
+    this.io = null;
+
     // Transaction statuses
     this.statuses = {
       PENDING: 'pending',
@@ -46,6 +49,13 @@ class PaymentService {
       BANK_TRANSFER: 'bank_transfer',
       DIGITAL_WALLET: 'digital_wallet'
     };
+  }
+
+  /**
+   * Set WebSocket instance for real-time updates
+   */
+  setIo(io) {
+    this.io = io;
   }
 
   /**
@@ -254,6 +264,7 @@ class PaymentService {
    */
   async simulateCardPayment(amount, cardToken, userId, description) {
     try {
+      console.log(`Starting card payment simulation: User ${userId}, Amount ${amount} FCFA`);
       logger.info('Simulating card payment for development');
       
       // Create a simulated transaction
@@ -272,14 +283,19 @@ class PaymentService {
         }
       });
 
-      // Simulate payment completion after a delay
-      setTimeout(async () => {
-        await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
-        await this.handleSuccessfulPayment(userId, amount, transaction.id, 'stripe');
-      }, 2000);
+      console.log('Transaction created:', transaction.id);
 
+      // Simulate payment completion immediately for development
+      console.log('Updating transaction status to completed');
+      await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
+      
+      console.log('Handling successful payment');
+      await this.handleSuccessfulPayment(userId, amount, transaction.id, 'stripe');
+
+      console.log('Card payment simulation completed successfully');
       return transaction;
     } catch (error) {
+      console.error('Error simulating card payment:', error);
       logger.error('Error simulating card payment:', error);
       throw error;
     }
@@ -321,11 +337,10 @@ class PaymentService {
           }
         });
 
-        // Simulate payment completion after a delay
-        setTimeout(async () => {
-          await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
-          await this.handleSuccessfulPayment(userId, amount, transaction.id, provider);
-        }, 2000);
+        // Simulate payment completion immediately for development
+        // Update balance FIRST, then mark transaction as completed
+        await this.handleSuccessfulPayment(userId, amount, transaction.id, provider);
+        await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
 
         return transaction;
       } else {
@@ -360,11 +375,10 @@ class PaymentService {
         }
       });
 
-      // Simulate payment completion after a delay
-      setTimeout(async () => {
-        await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
-        await this.handleSuccessfulPayment(userId, amount, transaction.id, provider);
-      }, 3000);
+      // Simulate payment completion immediately for development
+      // Update balance FIRST, then mark transaction as completed
+      await this.handleSuccessfulPayment(userId, amount, transaction.id, provider);
+      await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
 
       return transaction;
     } catch (error) {
@@ -404,11 +418,9 @@ class PaymentService {
           }
         });
 
-        // Simulate transfer completion after a delay
-        setTimeout(async () => {
-          await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
-          await this.handleSuccessfulPayment(userId, amount, transaction.id, 'bank');
-        }, 5000); // Bank transfers take longer
+        // Simulate transfer completion immediately for development
+        await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
+        await this.handleSuccessfulPayment(userId, amount, transaction.id, 'bank');
 
         return transaction;
       } else {
@@ -443,11 +455,9 @@ class PaymentService {
         }
       });
 
-      // Simulate transfer completion after a delay
-      setTimeout(async () => {
-        await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
-        await this.handleSuccessfulPayment(userId, amount, transaction.id, 'bank');
-      }, 5000);
+      // Simulate transfer completion immediately for development
+      await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED);
+      await this.handleSuccessfulPayment(userId, amount, transaction.id, 'bank');
 
       return transaction;
     } catch (error) {
@@ -580,37 +590,98 @@ class PaymentService {
    * Handle successful payment
    */
   async handleSuccessfulPayment(userId, amount, transactionId, gateway) {
+    const client = await db.pool.connect();
     try {
+      await client.query('BEGIN');
+      
+      console.log(`Processing successful payment: User ${userId}, Amount ${amount}, Transaction ${transactionId}, Gateway ${gateway}`);
+      
       // Find transaction by transaction ID (since we're passing transaction.id)
-      const result = await db.query(`
+      console.log(`Looking for transaction with ID: ${transactionId}`);
+      const result = await client.query(`
         SELECT * FROM payment_transactions 
         WHERE id = $1
       `, [transactionId]);
+
+      console.log(`Found ${result.rows.length} transactions with ID ${transactionId}`);
+      if (result.rows.length > 0) {
+        console.log('Transaction details:', result.rows[0]);
+      }
 
       if (result.rows.length === 0) {
         throw new Error(`Transaction not found: ${transactionId}`);
       }
 
       const transaction = result.rows[0];
+      console.log('Found transaction:', transaction);
 
-      // Update transaction status
-      await this.updateTransactionStatus(transaction.id, this.statuses.COMPLETED, {
-        completedAt: new Date().toISOString(),
-        gatewayResponse: 'success'
-      });
+      // Check if transaction is already completed
+      if (transaction.status === 'completed') {
+        console.log('Transaction already completed, skipping balance update');
+        return transaction;
+      }
 
-      // Update user balance
-      await db.query(`
-        UPDATE users SET balance = balance + $1 WHERE id = $2
+      // Get current user balance with row lock to prevent race conditions
+      const userResult = await client.query(`
+        SELECT balance FROM users WHERE id = $1 FOR UPDATE
+      `, [userId]);
+
+      if (userResult.rows.length === 0) {
+        throw new Error(`User not found: ${userId}`);
+      }
+
+      const currentBalance = parseFloat(userResult.rows[0].balance || 0);
+      console.log('Current user balance:', currentBalance);
+
+        // Update transaction status
+        await client.query(`
+          UPDATE payment_transactions 
+          SET status = $1, updated_at = NOW()
+          WHERE id = $2
+        `, [this.statuses.COMPLETED, transaction.id]);
+
+      // Update user balance and get new balance
+      console.log(`Updating balance: adding ${amount} to user ${userId}`);
+      const balanceResult = await client.query(`
+        UPDATE users SET balance = COALESCE(balance, 0) + $1 WHERE id = $2 RETURNING balance
       `, [amount, userId]);
 
+      console.log('Balance update result:', balanceResult.rows[0]);
+      const newBalance = parseFloat(balanceResult.rows[0].balance);
+      console.log('New user balance:', newBalance);
+      
+      // Verify the balance was actually updated
+      const verifyResult = await client.query(`
+        SELECT balance FROM users WHERE id = $1
+      `, [userId]);
+      console.log('Balance verification:', verifyResult.rows[0]);
+
+      // Commit the transaction
+      await client.query('COMMIT');
+      console.log('Transaction committed successfully');
+
+      // Emit balance update via WebSocket if io is available
+      if (this.io) {
+        this.io.to('game').emit('balance_update', {
+          userId: userId,
+          newBalance: newBalance,
+          amountAdded: amount,
+          transactionId: transactionId
+        });
+        console.log('Balance update emitted via WebSocket');
+      }
+
       // Log successful recharge
-      logger.info(`Recharge completed: User ${userId}, Amount ${amount} FCFA, Transaction ${transactionId}, Gateway ${gateway}`);
+      logger.info(`Recharge completed: User ${userId}, Amount ${amount} FCFA, Transaction ${transactionId}, Gateway ${gateway}, New Balance: ${newBalance} FCFA`);
 
       return transaction;
     } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error handling successful payment:', error);
       logger.error('Error handling successful payment:', error);
       throw error;
+    } finally {
+      client.release();
     }
   }
 

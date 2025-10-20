@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useGameStore } from '../../stores/gameStore';
 import { useAuthStore } from '../../stores/authStore';
-import { useWebSocket } from '../../hooks/useWebSocket';
 import Tower3D from '../../components/game/Tower3D';
 import BettingInterface from '../../components/game/BettingInterface';
 import GameSidebar from '../../components/game/GameSidebar';

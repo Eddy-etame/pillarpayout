@@ -26,7 +26,7 @@ class UserModel {
   async findByUsername(username) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE username = $1',
+        'SELECT id, username, email, password_hash, COALESCE(balance, 0) as balance, role, is_admin, created_at FROM users WHERE username = $1',
         [username]
       );
       return result.rows[0] || null;
@@ -39,7 +39,7 @@ class UserModel {
   async findByEmail(email) {
     try {
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE email = $1',
+        'SELECT id, username, email, password_hash, COALESCE(balance, 0) as balance, role, is_admin, created_at FROM users WHERE email = $1',
         [email]
       );
       return result.rows[0] || null;
@@ -51,12 +51,16 @@ class UserModel {
 
   async findById(id) {
     try {
+      console.log(`Querying database for user ID: ${id}`);
       const result = await db.query(
-        'SELECT id, username, email, password_hash, balance, role, is_admin, created_at FROM users WHERE id = $1',
+        'SELECT id, username, email, password_hash, COALESCE(balance, 0) as balance, role, is_admin, created_at FROM users WHERE id = $1',
         [id]
       );
+      console.log('Database query result:', result.rows[0]);
+      console.log(`Balance from database: ${result.rows[0]?.balance} (type: ${typeof result.rows[0]?.balance})`);
       return result.rows[0] || null;
     } catch (error) {
+      console.error('Error finding user by ID:', error);
       logger.error('Error finding user by ID:', error);
       throw error;
     }

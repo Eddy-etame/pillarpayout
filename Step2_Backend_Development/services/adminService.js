@@ -29,6 +29,7 @@ class AdminService {
         `);
         totalPayouts = parseFloat(payoutsResult.rows[0].total_payouts) || 0;
       } catch (error) {
+        logger.warn('round_results table query failed, using 0 for payouts:', error.message);
         // If round_results table doesn't exist or has issues, use 0
         totalPayouts = 0;
       }

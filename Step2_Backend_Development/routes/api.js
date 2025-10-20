@@ -10,6 +10,7 @@ const chatRoutes = require('./chat');
 const statsRoutes = require('./stats');
 const insuranceRoutes = require('./insurance');
 const tournamentRoutes = require('./tournaments');
+const weeklyTournamentRoutes = require('./weeklyTournaments');
 const productionRoutes = require('./production');
 
 router.use('/auth', authRoutes);
@@ -22,6 +23,7 @@ router.use('/chat', chatRoutes);
 router.use('/stats', statsRoutes);
 router.use('/insurance', insuranceRoutes);
 router.use('/tournaments', tournamentRoutes);
+router.use('/weekly-tournaments', weeklyTournamentRoutes);
 router.use('/production', productionRoutes);
 
 module.exports = router; 

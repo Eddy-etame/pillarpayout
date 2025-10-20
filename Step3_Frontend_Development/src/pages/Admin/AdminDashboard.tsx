@@ -25,6 +25,8 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../utils/api';
 import { useNavigate } from 'react-router-dom';
+// import LivePlayerMonitor from '../../components/admin/LivePlayerMonitor';
+// import ProfitabilityCharts from '../../components/admin/ProfitabilityCharts';
 
 interface ProfitabilityMetrics {
   totalRevenue: number;
@@ -93,10 +95,11 @@ const AdminDashboard: React.FC = () => {
   const fetchAdminData = useCallback(async () => {
     try {
       setIsLoading(true);
+      setMessage(null); // Clear previous messages
       
       const token = useAuthStore.getState().token;
       if (!token) {
-        setMessage({ type: 'error', text: 'No authentication token found' });
+        setMessage({ type: 'error', text: 'No authentication token found. Please login again.' });
         return;
       }
       
@@ -105,40 +108,89 @@ const AdminDashboard: React.FC = () => {
         'Content-Type': 'application/json'
       };
       
+      console.log('Fetching admin dashboard data...');
+      
       // Use axios client with baseURL and auth header
       const overviewResponse = await api.get('/v1/admin/dashboard/overview', { headers });
       const overviewData = overviewResponse.data;
       console.log('Dashboard overview data:', overviewData);
       
-      // Set all the data from the overview response
-      if (overviewData?.profitability) {
-        setProfitabilityMetrics(overviewData.profitability);
-      }
-      if (overviewData?.gameStatus) {
-        setGameControl(overviewData.gameStatus);
-      }
-      if (overviewData?.security) {
-        setSecurityMetrics(overviewData.security);
-      }
-      if (overviewData?.users) {
-        setUserManagement(overviewData.users);
+      // Check if the response indicates success
+      if (overviewData?.success === false) {
+        throw new Error(overviewData.error || 'Failed to fetch dashboard data');
       }
       
-      setMessage({ type: 'success', text: 'Admin data loaded successfully' });
+      // Set all the data from the overview response with null checks
+      // Data is nested inside overviewData.data due to the envelope format
+      const dashboardData = overviewData?.data;
       
-    } catch (error) {
-      const status = (error as any)?.response?.status;
-      const data = (error as any)?.response?.data;
+      if (dashboardData?.profitability) {
+        setProfitabilityMetrics(dashboardData.profitability);
+      } else {
+        console.warn('No profitability data received');
+        setProfitabilityMetrics(null);
+      }
+      
+      if (dashboardData?.gameStatus) {
+        setGameControl(dashboardData.gameStatus);
+      } else {
+        console.warn('No game status data received');
+        setGameControl(null);
+      }
+      
+      if (dashboardData?.security) {
+        setSecurityMetrics(dashboardData.security);
+      } else {
+        console.warn('No security data received');
+        setSecurityMetrics(null);
+      }
+      
+      if (dashboardData?.users) {
+        setUserManagement(dashboardData.users);
+      } else {
+        console.warn('No user management data received');
+        setUserManagement(null);
+      }
+      
+      // Show warnings for any errors in the response
+      if (dashboardData?.errors && dashboardData.errors.length > 0) {
+        console.warn('Dashboard data errors:', dashboardData.errors);
+        setMessage({ 
+          type: 'info', 
+          text: `Data loaded with warnings: ${dashboardData.errors.join(', ')}` 
+        });
+      } else {
+        setMessage({ type: 'success', text: 'Admin data loaded successfully' });
+      }
+      
+    } catch (error: any) {
+      console.error('Error fetching admin data:', error);
+      
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      
       if (status === 401) {
         console.error('Dashboard overview API error: 401 Unauthorized', data);
         setMessage({ type: 'error', text: 'Session expired. Redirecting to login...' });
         // Clear auth state and redirect
-        try { localStorage.removeItem('authToken'); } catch {}
+        try { 
+          localStorage.removeItem('authToken'); 
+          localStorage.removeItem('user');
+        } catch (e) {
+          console.warn('Error clearing localStorage:', e);
+        }
         logout();
         navigate('/auth');
+      } else if (status === 403) {
+        setMessage({ type: 'error', text: 'Access denied. You do not have admin privileges.' });
+      } else if (status === 500) {
+        const errorMsg = data?.details || data?.error || 'Internal server error';
+        setMessage({ type: 'error', text: `Server error: ${errorMsg}` });
+      } else if (error.code === 'NETWORK_ERROR' || !navigator.onLine) {
+        setMessage({ type: 'error', text: 'Network error. Please check your connection.' });
       } else {
-        console.error('Error fetching admin data:', error);
-        setMessage({ type: 'error', text: 'Failed to fetch admin data' });
+        const errorMsg = data?.error || error.message || 'Failed to fetch admin data';
+        setMessage({ type: 'error', text: `Error: ${errorMsg}` });
       }
     } finally {
       setIsLoading(false);
@@ -415,12 +467,13 @@ const AdminDashboard: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex space-x-2 mb-8 border-b border-gray-700">
         {[
-          { id: 'overview', label: 'Overview', icon: BarChart3 },
-          { id: 'profitability', label: 'Profitability', icon: DollarSign },
-          { id: 'game-control', label: 'Game Control', icon: Gamepad2 },
-          { id: 'security', label: 'Security', icon: Shield },
-          { id: 'users', label: 'User Management', icon: Users },
-          { id: 'analytics', label: 'Analytics', icon: TrendingUp }
+        { id: 'overview', label: 'Overview', icon: BarChart3 },
+        { id: 'profitability', label: 'Profitability', icon: DollarSign },
+        { id: 'live-players', label: 'Live Players', icon: Activity },
+        { id: 'charts', label: 'Analytics Charts', icon: TrendingUp },
+        { id: 'game-control', label: 'Game Control', icon: Gamepad2 },
+        { id: 'security', label: 'Security', icon: Shield },
+        { id: 'users', label: 'User Management', icon: Users }
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -656,6 +709,34 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-gray-400">Loading profitability data...</p>
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* Live Players Tab */}
+        {activeTab === 'live-players' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Live Player Monitor</h3>
+              <p className="text-gray-400">Live player monitoring will be available soon...</p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Analytics Charts Tab */}
+        {activeTab === 'charts' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Analytics Charts</h3>
+              <p className="text-gray-400">Interactive charts will be available soon...</p>
+            </div>
           </motion.div>
         )}
 

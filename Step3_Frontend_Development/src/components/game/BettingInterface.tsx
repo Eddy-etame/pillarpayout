@@ -15,6 +15,10 @@ const BettingInterface: React.FC = () => {
   const [betAmount, setBetAmount] = useState('');
   const [autoCashout, setAutoCashout] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedInsurance, setSelectedInsurance] = useState<'basic' | 'premium' | 'elite' | null>(null);
+  const [insuranceOptions, setInsuranceOptions] = useState<any[]>([]);
+  const [insuranceGames, setInsuranceGames] = useState(1); // Number of games to insure
+  const [insuranceLoading, setInsuranceLoading] = useState(false);
 
   const numericBalance: number = (() => {
     const b: unknown = user?.balance as unknown;
@@ -24,6 +28,37 @@ const BettingInterface: React.FC = () => {
   })();
 
   const MIN_BET = 100; // FCFA
+
+  // Fetch insurance options when bet amount changes
+  const fetchInsuranceOptions = async (amount: number) => {
+    if (amount < 100) { // Minimum bet for insurance
+      setInsuranceOptions([]);
+      return;
+    }
+    
+    setInsuranceLoading(true);
+    try {
+      console.log('🔍 Fetching insurance for amount:', amount);
+      const response = await fetch(`http://localhost:3001/api/insurance/options?betAmount=${amount}`);
+      console.log('📡 Response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Insurance data:', data);
+        setInsuranceOptions(data.options || []);
+      } else {
+        console.error('❌ Insurance API error:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Error details:', errorText);
+        setInsuranceOptions([]);
+      }
+    } catch (error) {
+      console.error('❌ Network error:', error);
+      setInsuranceOptions([]);
+    } finally {
+      setInsuranceLoading(false);
+    }
+  };
 
   const handlePlaceBet = async () => {
     const bet = parseAmount(betAmount);
@@ -59,12 +94,14 @@ const BettingInterface: React.FC = () => {
       setCurrentBet(bet);
       setHasPlacedBet(true);
       
-      // Send bet to backend via WebSocket
+      // Send bet to backend via WebSocket with insurance
       if (isConnected) {
         sendMessage({
           type: 'player_action',
           action: 'bet',
           amount: bet,
+          insuranceType: selectedInsurance,
+          insuranceGames: selectedInsurance ? insuranceGames : 1,
           userId: user?.id
         });
       }
@@ -122,7 +159,20 @@ const BettingInterface: React.FC = () => {
 
   const handleQuickAmount = (amount: number) => {
     setBetAmount(amount.toString());
+    fetchInsuranceOptions(amount);
   };
+
+  // Fetch insurance options when bet amount changes
+  React.useEffect(() => {
+    const amount = parseAmount(betAmount);
+    
+    if (amount && amount >= 100) {
+      fetchInsuranceOptions(amount);
+    } else {
+      setInsuranceOptions([]);
+      setSelectedInsurance(null); // Reset insurance selection when amount is invalid
+    }
+  }, [betAmount]);
 
   const quickAmounts = [100, 500, 1000, 2500, 5000, 10000]; // FCFA
 
@@ -225,6 +275,124 @@ const BettingInterface: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {/* Insurance Options */}
+      {parseAmount(betAmount) >= 100 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <label className="block text-sm font-medium text-gray-300">
+              🛡️ Bet Insurance (Optional)
+            </label>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-gray-400">For</span>
+              <select
+                value={insuranceGames}
+                onChange={(e) => setInsuranceGames(parseInt(e.target.value))}
+                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+              >
+                <option value={1}>1 game</option>
+                <option value={3}>3 games</option>
+                <option value={5}>5 games</option>
+                <option value={10}>10 games</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            {/* No Insurance Option */}
+            <button
+              onClick={() => setSelectedInsurance(null)}
+              className={`w-full p-4 rounded-lg border-2 transition-all ${
+                selectedInsurance === null
+                  ? 'border-green-500 bg-green-500/20'
+                  : 'border-gray-600 bg-gray-700 hover:border-gray-500'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <div className="text-left">
+                  <div className="font-semibold text-lg">No Insurance</div>
+                  <div className="text-sm text-gray-400">
+                    Play without protection - Risk it all!
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-green-400">
+                    {formatXAF(parseAmount(betAmount))}
+                  </div>
+                  <div className="text-xs text-gray-400">Bet Only</div>
+                </div>
+              </div>
+            </button>
+            
+            {/* Loading State */}
+            {insuranceLoading && (
+              <div className="w-full p-4 rounded-lg border-2 border-gray-600 bg-gray-700">
+                <div className="flex justify-center items-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500 mr-2"></div>
+                  <div className="text-sm text-gray-400">Loading insurance options...</div>
+                </div>
+              </div>
+            )}
+            
+            {/* Insurance Options */}
+            {insuranceOptions.length > 0 && insuranceOptions.map((option) => {
+              const totalPremium = option.premium * insuranceGames;
+              const totalCoverage = option.coverageAmount * insuranceGames;
+              const totalCost = option.totalCost * insuranceGames;
+              const netCost = totalCost - parseAmount(betAmount);
+              
+              return (
+                <button
+                  key={option.type}
+                  onClick={() => setSelectedInsurance(option.type)}
+                  className={`w-full p-4 rounded-lg border-2 transition-all ${
+                    selectedInsurance === option.type
+                      ? 'border-orange-500 bg-orange-500/20'
+                      : 'border-gray-600 bg-gray-700 hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="text-left flex-1">
+                      <div className="font-semibold text-lg capitalize">{option.type} Insurance</div>
+                      <div className="text-sm text-gray-400 mb-2">
+                        {insuranceGames} game{insuranceGames > 1 ? 's' : ''} • {formatXAF(option.premium)} per game
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-gray-800 p-2 rounded">
+                          <div className="text-gray-400">Premium</div>
+                          <div className="font-bold text-red-400">{formatXAF(totalPremium)}</div>
+                        </div>
+                        <div className="bg-gray-800 p-2 rounded">
+                          <div className="text-gray-400">Coverage</div>
+                          <div className="font-bold text-green-400">{formatXAF(totalCoverage)}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="text-lg font-bold">
+                        {formatXAF(totalCost)}
+                      </div>
+                      <div className="text-xs text-gray-400">Total Cost</div>
+                      <div className="text-xs text-orange-400 mt-1">
+                        +{formatXAF(netCost)} extra
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          
+          <div className="mt-3 p-3 bg-gray-900 rounded-lg">
+            <div className="text-xs text-gray-400 space-y-1">
+              <p>• <strong>Premium:</strong> What you pay upfront for insurance</p>
+              <p>• <strong>Coverage:</strong> What you get back if you lose</p>
+              <p>• <strong>Multi-game:</strong> Insurance applies to {insuranceGames} consecutive game{insuranceGames > 1 ? 's' : ''}</p>
+              <p>• <strong>Auto-claim:</strong> Coverage is automatically applied when you lose</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Auto Cashout */}
       <div className="mb-6">
